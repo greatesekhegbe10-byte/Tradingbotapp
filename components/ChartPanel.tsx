@@ -1,16 +1,25 @@
 import React from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { MarketDataPoint } from '../types';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { MarketDataPoint, Trade, TradeType } from '../types';
 
 interface ChartPanelProps {
   data: MarketDataPoint[];
+  pair: string;
+  trades: Trade[];
 }
 
-export const ChartPanel: React.FC<ChartPanelProps> = ({ data }) => {
+export const ChartPanel: React.FC<ChartPanelProps> = ({ data, pair, trades }) => {
+  // Filter for open trades on this pair to show levels
+  const activeTrades = trades.filter(t => t.symbol === pair && t.status === 'OPEN');
+
+  const formatPrice = (price: number) => {
+    return price < 10 ? price.toFixed(4) : price.toFixed(2);
+  };
+
   return (
-    <div className="bg-surface p-4 md:p-6 rounded-xl border border-gray-700 h-[400px] flex flex-col">
+    <div className="bg-surface p-4 md:p-6 rounded-xl border border-gray-700 h-[300px] md:h-[400px] flex flex-col">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-white">BTC/USD Live Market</h2>
+        <h2 className="text-lg font-semibold text-white">{pair} Live Market</h2>
         <div className="flex gap-2">
           <span className="px-2 py-1 bg-gray-700 text-xs rounded text-gray-300">1H</span>
           <span className="px-2 py-1 bg-primary text-xs rounded text-white font-bold">LIVE</span>
@@ -38,10 +47,12 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({ data }) => {
               tick={{ fill: '#94a3b8', fontSize: 10 }} 
               stroke="#475569"
               width={50}
+              tickFormatter={(value) => value < 1000 ? value.toString() : (value/1000).toFixed(1) + 'k'}
             />
             <Tooltip 
               contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
               itemStyle={{ color: '#3b82f6' }}
+              formatter={(value: number) => [formatPrice(value), 'Price']}
             />
             <Area 
               type="monotone" 
@@ -52,6 +63,40 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({ data }) => {
               fill="url(#colorPrice)" 
               isAnimationActive={false}
             />
+
+            {/* Render Trade Lines */}
+            {activeTrades.map((trade) => (
+              <React.Fragment key={trade.id}>
+                {/* Entry Price */}
+                <ReferenceLine 
+                    y={trade.price} 
+                    stroke="#94a3b8" 
+                    strokeDasharray="3 3"
+                    label={{ position: 'right', value: 'ENTRY', fill: '#94a3b8', fontSize: 10 }} 
+                />
+                
+                {/* Stop Loss */}
+                {trade.stopLoss && (
+                    <ReferenceLine 
+                        y={trade.stopLoss} 
+                        stroke="#ef4444" 
+                        strokeDasharray="5 5"
+                        label={{ position: 'right', value: 'SL', fill: '#ef4444', fontSize: 10 }} 
+                    />
+                )}
+
+                {/* Take Profit */}
+                {trade.takeProfit && (
+                    <ReferenceLine 
+                        y={trade.takeProfit} 
+                        stroke="#10b981" 
+                        strokeDasharray="5 5"
+                        label={{ position: 'right', value: 'TP', fill: '#10b981', fontSize: 10 }} 
+                    />
+                )}
+              </React.Fragment>
+            ))}
+
           </AreaChart>
         </ResponsiveContainer>
       </div>

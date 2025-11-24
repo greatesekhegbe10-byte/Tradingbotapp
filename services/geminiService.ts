@@ -12,7 +12,8 @@ const getAIClient = () => {
 export const analyzeMarket = async (
   dataHistory: MarketDataPoint[],
   currentBalance: number,
-  riskLevel: string
+  riskLevel: string,
+  pair: string
 ): Promise<AnalysisResult> => {
   
   const ai = getAIClient();
@@ -29,21 +30,22 @@ export const analyzeMarket = async (
   }
 
   // Prepare the prompt context
-  const recentData = dataHistory.slice(-20); // Send last 20 points to save tokens but give context
+  const recentData = dataHistory.slice(-20); // Send last 20 points
   const currentPrice = recentData[recentData.length - 1].price;
   
   const prompt = `
-    You are an expert AI crypto trading bot.
+    You are an expert AI trading bot analyzing ${pair}.
     Current Date: ${getCurrentTimestamp()}
     Current Balance: $${currentBalance}
     Risk Profile: ${riskLevel}
+    Current Price: ${currentPrice}
     
-    Market Data (Last 20 ticks for BTC/USD):
+    Market Data (Last 20 ticks for ${pair}):
     ${JSON.stringify(recentData)}
 
-    Analyze the price trend. Calculate a simplified RSI or Moving Average mentally based on the data provided.
+    Analyze the price trend for ${pair}.
     Determine if I should BUY, SELL, or HOLD.
-    Calculate a dynamic Stop Loss and Take Profit based on the ${riskLevel} risk profile.
+    Calculate a dynamic Stop Loss and Take Profit based on the ${riskLevel} risk profile and the specific volatility of ${pair}.
   `;
 
   try {

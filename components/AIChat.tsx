@@ -73,7 +73,7 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext }) => {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-80 md:w-96 h-[500px] bg-surface border border-gray-700 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden animate-fade-in">
+        <div className="fixed bottom-6 right-4 sm:right-6 w-[calc(100vw-2rem)] sm:w-80 md:w-96 h-[500px] bg-surface border border-gray-700 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden animate-fade-in">
           {/* Header */}
           <div className="p-4 bg-gray-800/80 border-b border-gray-700 flex justify-between items-center backdrop-blur-md">
             <div className="flex items-center gap-2">
@@ -97,7 +97,7 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext }) => {
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div 
-                  className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+                  className={`max-w-[85%] p-3 rounded-2xl text-sm ${
                     msg.sender === 'user' 
                       ? 'bg-primary text-white rounded-br-none' 
                       : 'bg-gray-800 text-gray-200 rounded-bl-none border border-gray-700'

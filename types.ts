@@ -12,6 +12,7 @@ export interface MarketDataPoint {
 
 export interface Trade {
   id: string;
+  symbol: string; // Added symbol
   type: TradeType;
   price: number;
   amount: number;

@@ -75,7 +75,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-surface border border-gray-700 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden">
+      <div className="bg-surface border border-gray-700 w-full max-w-lg mx-auto rounded-xl shadow-2xl overflow-hidden relative">
         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-primary" />
@@ -87,12 +87,12 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
         </div>
 
         <div className="p-6">
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="text-sm text-gray-400 mb-6 hidden sm:block">
             Securely connect your brokerage account to enable automated execution. NexusTrade supports all major regions including restricted zones via high-speed proxy routing.
           </p>
 
           {/* Broker Selection */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {brokers.map((b) => (
               <button
                 key={b.name}
@@ -105,7 +105,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
                 }`}
               >
                 <span className="text-xl font-bold mb-1">{b.icon}</span>
-                <span className="text-[10px] text-center leading-tight">{b.name}</span>
+                <span className="text-[10px] text-center leading-tight truncate w-full">{b.name}</span>
               </button>
             ))}
           </div>
@@ -135,7 +135,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Login ID</label>
                 <input 
@@ -170,7 +170,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
               {connecting ? (
                 <span className="flex items-center gap-2">
                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                   Establishing Secure Link...
+                   Connecting...
                 </span>
               ) : (
                 <>
