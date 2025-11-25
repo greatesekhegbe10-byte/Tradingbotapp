@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trade, TradeType } from '../types';
 import { History, ArrowUpRight, ArrowDownRight, Target, Shield } from 'lucide-react';
+import { getPairDetails } from '../services/marketService';
 
 interface TradeHistoryProps {
   trades: Trade[];
@@ -37,6 +38,9 @@ export const TradeHistory: React.FC<TradeHistoryProps> = ({ trades }) => {
             ) : (
                 trades.slice(0, 50).map((trade) => {
                   const asset = trade.symbol.split('/')[0];
+                  const details = getPairDetails(trade.symbol);
+                  const formatPrice = (p: number) => p.toFixed(details.decimals);
+                  
                   return (
                     <tr key={trade.id} className="border-b border-gray-700/50 hover:bg-gray-800/30 transition-colors">
                         <td className="px-4 py-3">
@@ -46,13 +50,13 @@ export const TradeHistory: React.FC<TradeHistoryProps> = ({ trades }) => {
                         </span>
                         </td>
                         <td className="px-4 py-3 font-medium text-gray-300">{trade.symbol}</td>
-                        <td className="px-4 py-3 font-mono text-gray-300">${trade.price.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono text-gray-300">${formatPrice(trade.price)}</td>
                         <td className="px-4 py-3 text-xs font-mono text-gray-400">
                           <div className="flex items-center gap-1">
-                            <Shield className="w-3 h-3 text-danger" /> {trade.stopLoss?.toFixed(trade.price < 10 ? 4 : 2)}
+                            <Shield className="w-3 h-3 text-danger" /> {trade.stopLoss ? formatPrice(trade.stopLoss) : '-'}
                           </div>
                           <div className="flex items-center gap-1 mt-0.5">
-                            <Target className="w-3 h-3 text-success" /> {trade.takeProfit?.toFixed(trade.price < 10 ? 4 : 2)}
+                            <Target className="w-3 h-3 text-success" /> {trade.takeProfit ? formatPrice(trade.takeProfit) : '-'}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-400">{trade.amount} {asset}</td>

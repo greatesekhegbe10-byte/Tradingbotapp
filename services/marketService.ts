@@ -24,6 +24,10 @@ const currentPrices: Record<string, number> = {
 
 let timeStep = 0;
 
+export const getPairDetails = (pair: string) => {
+  return PAIR_CONFIGS[pair] || PAIR_CONFIGS['BTC/USD'];
+};
+
 export const getPrice = (pair: string): number => {
   return currentPrices[pair] || PAIR_CONFIGS['BTC/USD'].price;
 };

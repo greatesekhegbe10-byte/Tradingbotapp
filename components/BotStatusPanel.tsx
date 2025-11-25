@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnalysisResult, TradeType, BotConfig } from '../types';
 import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown } from 'lucide-react';
+import { getPairDetails } from '../services/marketService';
 
 interface BotStatusPanelProps {
   analysis: AnalysisResult | null;
@@ -10,12 +11,18 @@ interface BotStatusPanelProps {
 }
 
 export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config, onToggleActive, isAnalyzing }) => {
+  const pairDetails = getPairDetails(config.pair);
+
   const getRecommendationColor = (rec: TradeType) => {
     switch (rec) {
       case TradeType.BUY: return 'text-success bg-success/10 border-success/20';
       case TradeType.SELL: return 'text-danger bg-danger/10 border-danger/20';
       default: return 'text-gray-400 bg-gray-700/30 border-gray-600';
     }
+  };
+
+  const formatPrice = (price: number) => {
+    return price.toLocaleString(undefined, { minimumFractionDigits: pairDetails.decimals, maximumFractionDigits: pairDetails.decimals });
   };
 
   return (
@@ -97,7 +104,7 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
                   <ShieldAlert className="w-3 h-3" /> Stop Loss
                 </div>
                 <div className="text-lg font-mono text-danger font-bold">
-                  ${analysis.stopLoss.toLocaleString()}
+                  ${formatPrice(analysis.stopLoss)}
                 </div>
               </div>
               <div className="bg-gray-800 p-3 rounded-lg border border-gray-700">
@@ -105,7 +112,7 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
                   <Activity className="w-3 h-3" /> Take Profit
                 </div>
                 <div className="text-lg font-mono text-success font-bold">
-                  ${analysis.takeProfit.toLocaleString()}
+                  ${formatPrice(analysis.takeProfit)}
                 </div>
               </div>
             </div>

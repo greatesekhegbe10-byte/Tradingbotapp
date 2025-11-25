@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu, Crown, Lock } from 'lucide-react';
+import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu, Crown, Lock, CheckCircle, Loader2 } from 'lucide-react';
 import { StatsCard } from './components/StatsCard';
 import { ChartPanel } from './components/ChartPanel';
 import { BotStatusPanel } from './components/BotStatusPanel';
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [notification, setNotification] = useState<{message: string, type: 'success' | 'pending' | 'error'} | null>(null);
   
   // Confirmation Modal State
   const [pendingTrade, setPendingTrade] = useState<{ type: TradeType; price: number } | null>(null);
@@ -40,13 +41,51 @@ const App: React.FC = () => {
     pair: 'BTC/USD',
     balance: 100000,
     broker: undefined,
-    isPro: false // Default to free plan
+    isPro: false, // Default to free plan
+    paymentStatus: 'UNPAID'
   });
+
+  // Track if payment was verified via API Key (simulated)
+  const [isApiVerification, setIsApiVerification] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'local' | 'foreign' | null>(null);
 
   const [currentHoldings, setCurrentHoldings] = useState<number>(0);
   const analysisIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // --- Effects ---
+
+  // Handle Payment Verification Simulation
+  useEffect(() => {
+    if (config.paymentStatus === 'PENDING') {
+      // If API key was provided, verify faster (3s) vs manual (8s)
+      const delay = isApiVerification ? 3000 : 8000;
+      const bankName = paymentMethod === 'local' ? 'Kuda Bank' : 'Grey';
+      
+      const timer = setTimeout(() => {
+        setConfig(prev => ({
+          ...prev,
+          paymentStatus: 'VERIFIED',
+          isPro: true
+        }));
+        setNotification({
+          message: isApiVerification 
+            ? `${bankName} API Confirmed Payment! Pro features unlocked.` 
+            : `Payment Verified by ${bankName}! Pro features unlocked.`,
+          type: 'success'
+        });
+      }, delay);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [config.paymentStatus, isApiVerification, paymentMethod]);
+
+  // Notification Timer
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   // 1. Initialize or Switch Market Data when Pair changes
   useEffect(() => {
@@ -103,7 +142,13 @@ const App: React.FC = () => {
 
             if (shouldClose) {
                 hasUpdates = true;
-                balanceAdjustment += profit + (trade.price * trade.amount); // Return principal (approx) + profit
+                
+                // Return Logic:
+                // We deducted (trade.price * trade.amount) as margin when opening.
+                // We now return Margin + Profit (or Margin - Loss).
+                // trade.amount was calculated based on entry price, so Margin ~= EntryPrice * Amount.
+                const initialMargin = trade.price * trade.amount;
+                balanceAdjustment += initialMargin + profit;
                 
                 // Adjust holdings (simplified)
                 if (trade.type === TradeType.BUY) {
@@ -130,6 +175,7 @@ const App: React.FC = () => {
                 if (Math.abs(holdingsAdjustment) > 0) {
                      setCurrentHoldings(h => h + holdingsAdjustment);
                 }
+                setNotification({ message: 'Trade Closed - Balance Updated', type: 'success' });
              }, 0);
              return updatedTrades;
         }
@@ -199,7 +245,9 @@ const App: React.FC = () => {
 
   const confirmTrade = () => {
     if (pendingTrade) {
-      executeTrade(pendingTrade.type, pendingTrade.price);
+      // Execute at current market price, not the price when modal opened (slippage/realism)
+      const executionPrice = getPrice(config.pair);
+      executeTrade(pendingTrade.type, executionPrice);
       setPendingTrade(null);
     }
   };
@@ -216,8 +264,11 @@ const App: React.FC = () => {
 
     if (amount <= 0) return;
 
-    // Safety check for balance
-    if (type === TradeType.BUY && config.balance < tradeValue) return;
+    // Safety check for balance - applied to BOTH Buy and Sell as Margin
+    if (config.balance < tradeValue) {
+        setNotification({ message: 'Insufficient balance for trade margin', type: 'error' });
+        return;
+    }
 
     // Default SL/TP if manual
     const stopLoss = sl || (type === TradeType.BUY ? price * 0.98 : price * 1.02);
@@ -237,18 +288,40 @@ const App: React.FC = () => {
 
     setTrades(prev => [newTrade, ...prev]);
 
-    // Deduct balance for BUY (Simulation)
+    // Deduct balance for BOTH Buy and Sell (Margin Lock)
+    // We treat 'tradeValue' as the margin requirement for the position
+    setConfig(prev => ({ ...prev, balance: prev.balance - tradeValue }));
+    
+    // Update holdings
     if (type === TradeType.BUY) {
-        setConfig(prev => ({ ...prev, balance: prev.balance - tradeValue }));
-        setCurrentHoldings(prev => prev + amount);
+        setCurrentHoldings(prev => prev + amount); // Positive exposure
     } else {
-        // For sell, we just track margin usage in a real app
-        setCurrentHoldings(prev => prev - amount);
+        setCurrentHoldings(prev => prev - amount); // Negative exposure (Short)
     }
   };
 
   const toggleBot = () => {
     setConfig(prev => ({ ...prev, isActive: !prev.isActive }));
+  };
+
+  const handleProUpgrade = (details: { ref: string; apiKey?: string; method: 'local' | 'foreign' }) => {
+    setConfig(prev => ({
+      ...prev,
+      paymentStatus: 'PENDING'
+    }));
+    
+    const hasKey = !!details.apiKey && details.apiKey.length > 5;
+    setIsApiVerification(hasKey);
+    setPaymentMethod(details.method);
+
+    const bankName = details.method === 'local' ? 'Kuda Bank' : 'Grey';
+
+    setNotification({
+      message: hasKey 
+        ? `Connecting to ${bankName} API with Key... Verifying...`
+        : `Transaction submitted. Verifying with ${bankName}...`,
+      type: 'pending'
+    });
   };
 
   // --- Render ---
@@ -265,6 +338,20 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-gray-200 font-sans pb-12 relative">
       
+      {/* Toast Notification */}
+      {notification && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[70] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-fade-in border ${
+          notification.type === 'success' ? 'bg-green-900/90 border-green-500 text-white' : 
+          notification.type === 'pending' ? 'bg-blue-900/90 border-blue-500 text-white' : 
+          'bg-red-900/90 border-red-500 text-white'
+        }`}>
+          {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
+          {notification.type === 'pending' && <Loader2 className="w-5 h-5 animate-spin" />}
+          {notification.type === 'error' && <AlertTriangle className="w-5 h-5" />}
+          <span className="font-medium text-sm">{notification.message}</span>
+        </div>
+      )}
+
       <BrokerModal 
         isOpen={isBrokerModalOpen} 
         onClose={() => setIsBrokerModalOpen(false)}
@@ -274,11 +361,13 @@ const App: React.FC = () => {
       <UpgradeModal
         isOpen={isUpgradeModalOpen}
         onClose={() => setIsUpgradeModalOpen(false)}
-        onUpgrade={() => setConfig(prev => ({ ...prev, isPro: true }))}
+        onUpgrade={handleProUpgrade}
       />
 
+      {/* AI Chat now receives full config to enforce Access Control */}
       <AIChat 
         marketContext={`Pair: ${config.pair}, Price: ${currentPrice}, Trend: ${priceChange > 0 ? 'Up' : 'Down'}, Active Trades: ${trades.filter(t => t.status === 'OPEN').length}`} 
+        config={config}
       />
 
       {/* Trade Confirmation Modal */}
@@ -336,13 +425,19 @@ const App: React.FC = () => {
             
             <div className="flex items-center gap-3 sm:gap-6">
               
-              {!config.isPro && (
+              {!config.isPro && config.paymentStatus !== 'PENDING' && (
                   <button 
                     onClick={() => setIsUpgradeModalOpen(true)}
                     className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-lg shadow-yellow-900/20 animate-pulse"
                   >
                     <Crown className="w-3 h-3" /> UPGRADE
                   </button>
+              )}
+              
+              {config.paymentStatus === 'PENDING' && (
+                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold">
+                    <Loader2 className="w-3 h-3 animate-spin" /> {isApiVerification ? 'API CHECK' : 'VERIFYING'}
+                  </div>
               )}
 
               {/* Pair Selector */}
@@ -482,7 +577,11 @@ const App: React.FC = () => {
                         key={level}
                         onClick={() => {
                           if (isLocked) {
-                            setIsUpgradeModalOpen(true);
+                            if (config.paymentStatus === 'PENDING') {
+                                setNotification({ message: 'Pro Verification in progress...', type: 'pending'});
+                            } else {
+                                setIsUpgradeModalOpen(true);
+                            }
                             return;
                           }
                           setConfig(c => ({ ...c, riskLevel: level as any }));
@@ -506,7 +605,11 @@ const App: React.FC = () => {
                 
                 {!config.isPro && (
                   <p className="text-[10px] text-gray-500 mt-2 text-center">
-                    <span className="text-yellow-500">PRO TIP:</span> Upgrade to unlock High Risk strategies.
+                    {config.paymentStatus === 'PENDING' ? (
+                       <span className="text-blue-400">Verifying payment for Pro Access...</span>
+                    ) : (
+                       <span className="text-yellow-500">PRO TIP: Upgrade to unlock High Risk strategies.</span>
+                    )}
                   </p>
                 )}
             </div>

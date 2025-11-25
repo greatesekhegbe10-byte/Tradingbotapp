@@ -40,5 +40,6 @@ export interface BotConfig {
   pair: string;
   balance: number;
   broker?: string;
-  isPro: boolean; // Added isPro flag
+  isPro: boolean;
+  paymentStatus: 'UNPAID' | 'PENDING' | 'VERIFIED'; // Added verification status
 }

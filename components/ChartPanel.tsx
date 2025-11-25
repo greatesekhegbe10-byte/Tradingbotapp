@@ -1,6 +1,7 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { MarketDataPoint, Trade, TradeType } from '../types';
+import { getPairDetails } from '../services/marketService';
 
 interface ChartPanelProps {
   data: MarketDataPoint[];
@@ -11,9 +12,10 @@ interface ChartPanelProps {
 export const ChartPanel: React.FC<ChartPanelProps> = ({ data, pair, trades }) => {
   // Filter for open trades on this pair to show levels
   const activeTrades = trades.filter(t => t.symbol === pair && t.status === 'OPEN');
+  const details = getPairDetails(pair);
 
   const formatPrice = (price: number) => {
-    return price < 10 ? price.toFixed(4) : price.toFixed(2);
+    return price.toFixed(details.decimals);
   };
 
   return (
@@ -43,11 +45,11 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({ data, pair, trades }) =>
               minTickGap={30}
             />
             <YAxis 
-              domain={['auto', 'auto']} 
+              domain={['dataMin', 'dataMax']} 
               tick={{ fill: '#94a3b8', fontSize: 10 }} 
               stroke="#475569"
-              width={50}
-              tickFormatter={(value) => value < 1000 ? value.toString() : (value/1000).toFixed(1) + 'k'}
+              width={60}
+              tickFormatter={(value) => formatPrice(value)}
             />
             <Tooltip 
               contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}

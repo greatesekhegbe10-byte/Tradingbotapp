@@ -1,22 +1,37 @@
 import React, { useState } from 'react';
-import { X, Check, CreditCard, Globe, Crown, ShieldCheck, Copy, MapPin } from 'lucide-react';
+import { X, Check, CreditCard, Globe, Crown, ShieldCheck, Copy, MapPin, ReceiptText, Loader2, Key } from 'lucide-react';
 
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpgrade: () => void;
+  onUpgrade: (details: { ref: string; apiKey?: string; method: 'local' | 'foreign' }) => void;
 }
 
 export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onUpgrade }) => {
   const [activeTab, setActiveTab] = useState<'local' | 'foreign'>('local');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [transactionRef, setTransactionRef] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
   const handlePaymentConfirm = () => {
-    // In a production app, this would verify the transaction hash/ID
-    onUpgrade();
-    onClose();
+    if (!transactionRef.trim()) return;
+    
+    setIsSubmitting(true);
+    // Simulate brief processing before passing to parent
+    setTimeout(() => {
+        onUpgrade({ 
+            ref: transactionRef, 
+            apiKey: apiKey.trim(),
+            method: activeTab
+        });
+        setIsSubmitting(false);
+        setTransactionRef(''); 
+        setApiKey('');
+        onClose();
+    }, 1500);
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -197,15 +212,58 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onU
                 )}
             </div>
 
-            <p className="text-xs text-gray-500 mb-4 text-center">
-                Transactions are processed within 15 minutes. Click below once sent.
-            </p>
+            {/* Proof of Payment Section */}
+            <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 mb-4">
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Proof of Payment</label>
+                
+                <div className="space-y-3">
+                    <div className="relative">
+                        <ReceiptText className="absolute left-3 top-2.5 w-5 h-5 text-gray-500" />
+                        <input 
+                            type="text" 
+                            value={transactionRef}
+                            onChange={(e) => setTransactionRef(e.target.value)}
+                            placeholder="Enter Transaction Reference / Sender Name"
+                            className="w-full bg-gray-900 border border-gray-600 rounded-lg py-2.5 pl-10 pr-4 text-white placeholder-gray-500 focus:ring-1 focus:ring-yellow-500 outline-none transition-all"
+                        />
+                    </div>
+                    
+                    {/* API Key Input for Instant Linking */}
+                    <div className="relative">
+                        <Key className="absolute left-3 top-2.5 w-5 h-5 text-gray-500" />
+                        <input 
+                            type="password" 
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="Bank API Key (Instant Verification)"
+                            className="w-full bg-gray-900 border border-gray-600 rounded-lg py-2.5 pl-10 pr-4 text-white placeholder-gray-500 focus:ring-1 focus:ring-yellow-500 outline-none transition-all"
+                        />
+                    </div>
+                </div>
+
+                <p className="text-[10px] text-gray-500 mt-2">
+                    * Linking your Bank API Key allows for instant payment confirmation via open banking protocols.
+                </p>
+            </div>
 
             <button 
                 onClick={handlePaymentConfirm}
-                className="w-full py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black font-bold rounded-lg shadow-lg shadow-yellow-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+                disabled={!transactionRef.trim() || isSubmitting}
+                className={`w-full py-3 font-bold rounded-lg shadow-lg transition-all flex items-center justify-center gap-2 ${
+                    !transactionRef.trim() 
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black shadow-yellow-900/20 active:scale-95'
+                }`}
             >
-                <Check className="w-4 h-4" /> I Have Made The Payment
+                {isSubmitting ? (
+                    <>
+                       <Loader2 className="w-4 h-4 animate-spin" /> Verifying...
+                    </>
+                ) : (
+                    <>
+                       <Check className="w-4 h-4" /> Link & Verify Payment
+                    </>
+                )}
             </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot } from 'lucide-react';
 import { chatWithAssistant } from '../services/geminiService';
+import { BotConfig } from '../types';
 
 interface Message {
   id: string;
@@ -11,9 +12,10 @@ interface Message {
 
 interface AIChatProps {
   marketContext: string;
+  config: BotConfig;
 }
 
-export const AIChat: React.FC<AIChatProps> = ({ marketContext }) => {
+export const AIChat: React.FC<AIChatProps> = ({ marketContext, config }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', sender: 'ai', text: 'Hello! I am Nexus. How can I assist with your trading today?', timestamp: new Date() }
@@ -45,7 +47,8 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext }) => {
     setInputText('');
     setIsTyping(true);
 
-    const response = await chatWithAssistant(userMsg.text, marketContext);
+    // Pass the config to the service so the AI knows the user's status
+    const response = await chatWithAssistant(userMsg.text, marketContext, config);
 
     const aiMsg: Message = {
       id: (Date.now() + 1).toString(),

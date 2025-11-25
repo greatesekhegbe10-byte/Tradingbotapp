@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MarketDataPoint, AnalysisResult, TradeType } from "../types";
+import { MarketDataPoint, AnalysisResult, TradeType, BotConfig } from "../types";
 
 // Helper to get formatted date
 const getCurrentTimestamp = () => new Date().toISOString();
@@ -101,21 +101,45 @@ export const analyzeMarket = async (
   }
 };
 
-export const chatWithAssistant = async (message: string, marketContext: string) => {
+export const chatWithAssistant = async (message: string, marketContext: string, userConfig: BotConfig) => {
   const ai = getAIClient();
   if (!ai) return "I cannot reply without an API Key.";
+
+  // STRICT ACCESS CONTROL LOGIC INJECTION
+  const systemInstructions = `
+    You are the access-control and logic engine for the NexusTrade application.
+    
+    USER STATUS:
+    - Pro Active: ${userConfig.isPro}
+    - Payment Status: ${userConfig.paymentStatus}
+    - Current Risk Level: ${userConfig.riskLevel}
+    
+    SYSTEM RULES (DO NOT IGNORE):
+    1. The app has Free Features and Pro Features.
+    2. Users CANNOT access Pro features (like 'HIGH' risk, Gold/XAU pairs, or unlimited trades) until bank payment verification is confirmed.
+    3. Payment Flow: User pays -> Bank API confirms -> Status becomes 'VERIFIED' -> Pro unlocks.
+    4. If user asks for Pro features and isPro is false:
+       - Check paymentStatus.
+       - If 'PENDING': Tell them "Payment is currently being verified by the bank API."
+       - If 'UNPAID': Tell them "Access Denied. Please complete the bank transfer to upgrade."
+    
+    OUTPUT FORMAT:
+    If the user asks about their account status, access, or pro features, you MUST use this format:
+    [Access Status] → [Payment Status] → [Instruction to User]
+
+    Example: [Denied] → [Pending Verification] → Please wait while Kuda Bank confirms your transaction.
+    
+    Otherwise, if the user asks about the market, answer normally as a trading assistant using this context:
+    ${marketContext}
+  `;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `
-        System: You are 'Nexus', a trading assistant for the NexusTrade AI terminal. 
-        You help users understand the market. Keep answers concise and professional.
-        
-        Current Market Context:
-        ${marketContext}
+        ${systemInstructions}
 
-        User: ${message}
+        User Message: ${message}
       `
     });
     return response.text;
