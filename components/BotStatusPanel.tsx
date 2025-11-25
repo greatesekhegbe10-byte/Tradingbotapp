@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnalysisResult, TradeType, BotConfig } from '../types';
-import { Brain, Play, Square, Activity, ShieldAlert, Zap } from 'lucide-react';
+import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown } from 'lucide-react';
 
 interface BotStatusPanelProps {
   analysis: AnalysisResult | null;
@@ -19,35 +19,42 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
   };
 
   return (
-    <div className="bg-surface rounded-xl border border-gray-700 flex flex-col overflow-hidden">
+    <div className="bg-surface rounded-xl border border-gray-700 flex flex-col overflow-hidden relative">
+      {/* Pro Badge Watermark */}
+      {config.isPro && (
+        <div className="absolute top-2 right-14 opacity-10 pointer-events-none">
+             <Crown className="w-24 h-24 text-yellow-500" />
+        </div>
+      )}
+
       {/* Header / Controls */}
-      <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
+      <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
-          <Brain className="w-5 h-5 text-purple-400" />
-          <h2 className="text-lg font-semibold text-white">Gemini Core</h2>
+          <Brain className={`w-5 h-5 ${config.isPro ? 'text-yellow-400' : 'text-purple-400'}`} />
+          <h2 className="text-lg font-semibold text-white">Gemini Core {config.isPro && <span className="text-xs text-yellow-400 ml-1 font-bold">PRO</span>}</h2>
         </div>
         <button
           onClick={onToggleActive}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-all ${
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-all shadow-lg ${
             config.isActive 
-              ? 'bg-danger text-white hover:bg-red-600' 
-              : 'bg-success text-white hover:bg-green-600'
+              ? 'bg-danger text-white hover:bg-red-600 shadow-red-900/20' 
+              : 'bg-success text-white hover:bg-green-600 shadow-green-900/20'
           }`}
         >
           {config.isActive ? (
             <>
-              <Square className="w-3 h-3 fill-current" /> STOP BOT
+              <Square className="w-3 h-3 fill-current" /> STOP
             </>
           ) : (
             <>
-              <Play className="w-3 h-3 fill-current" /> START BOT
+              <Play className="w-3 h-3 fill-current" /> AUTO-TRADE
             </>
           )}
         </button>
       </div>
 
       {/* Main Analysis Content */}
-      <div className="p-6 flex-1 flex flex-col gap-6">
+      <div className="p-6 flex-1 flex flex-col gap-6 z-10">
         
         {/* Status Indicator */}
         <div className="flex items-center justify-between">

@@ -12,7 +12,7 @@ export interface MarketDataPoint {
 
 export interface Trade {
   id: string;
-  symbol: string; // Added symbol
+  symbol: string;
   type: TradeType;
   price: number;
   amount: number;
@@ -40,4 +40,5 @@ export interface BotConfig {
   pair: string;
   balance: number;
   broker?: string;
+  isPro: boolean; // Added isPro flag
 }

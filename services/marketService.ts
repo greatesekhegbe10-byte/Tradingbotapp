@@ -24,26 +24,32 @@ const currentPrices: Record<string, number> = {
 
 let timeStep = 0;
 
+export const getPrice = (pair: string): number => {
+  return currentPrices[pair] || PAIR_CONFIGS['BTC/USD'].price;
+};
+
 export const generateMarketData = (pair: string = 'BTC/USD'): MarketDataPoint => {
   const now = new Date();
-  const config = PAIR_CONFIGS[pair] || PAIR_CONFIGS['BTC/USD'];
   
-  // Initialize if missing
-  if (!currentPrices[pair]) currentPrices[pair] = config.price;
-
-  // Simulate random walk with some trend
-  const volatility = config.volatility;
-  // Create a slight sine wave trend based on timeStep
-  const trend = Math.sin(timeStep / 20) * (volatility / 2); 
-  const noise = (Math.random() - 0.5) * volatility;
-  
-  currentPrices[pair] += trend + noise;
-  
-  // Ensure price doesn't go negative
-  if (currentPrices[pair] < config.volatility) currentPrices[pair] = config.price;
+  // Update ALL pairs to ensure background trades trigger SL/TP
+  Object.keys(currentPrices).forEach(p => {
+    const config = PAIR_CONFIGS[p];
+    const volatility = config.volatility;
+    
+    // Main trend logic
+    const trend = Math.sin((timeStep + (p.length * 10)) / 20) * (volatility / 2); 
+    const noise = (Math.random() - 0.5) * volatility;
+    
+    currentPrices[p] += trend + noise;
+    
+    // Safety floor
+    if (currentPrices[p] < config.volatility) currentPrices[p] = config.price;
+  });
 
   timeStep++;
 
+  const config = PAIR_CONFIGS[pair] || PAIR_CONFIGS['BTC/USD'];
+  
   return {
     time: now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
     price: parseFloat(currentPrices[pair].toFixed(config.decimals)),

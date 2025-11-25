@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu } from 'lucide-react';
+import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu, Crown, Lock } from 'lucide-react';
 import { StatsCard } from './components/StatsCard';
 import { ChartPanel } from './components/ChartPanel';
 import { BotStatusPanel } from './components/BotStatusPanel';
 import { TradeHistory } from './components/TradeHistory';
 import { AuthPage } from './components/AuthPage';
 import { BrokerModal } from './components/BrokerModal';
+import { UpgradeModal } from './components/UpgradeModal';
 import { AIChat } from './components/AIChat';
 import { MarketDataPoint, Trade, TradeType, AnalysisResult, BotConfig } from './types';
-import { generateMarketData, generateInitialHistory } from './services/marketService';
+import { generateMarketData, generateInitialHistory, getPrice } from './services/marketService';
 import { analyzeMarket } from './services/geminiService';
 
 const AVAILABLE_PAIRS = [
@@ -22,6 +23,7 @@ const App: React.FC = () => {
   // --- Auth State ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   // --- App State ---
   const [marketData, setMarketData] = useState<MarketDataPoint[]>([]);
@@ -37,7 +39,8 @@ const App: React.FC = () => {
     riskLevel: 'MEDIUM',
     pair: 'BTC/USD',
     balance: 100000,
-    broker: undefined
+    broker: undefined,
+    isPro: false // Default to free plan
   });
 
   const [currentHoldings, setCurrentHoldings] = useState<number>(0);
@@ -57,6 +60,7 @@ const App: React.FC = () => {
     if (!isAuthenticated) return;
     const interval = setInterval(() => {
       setMarketData(prev => {
+        // generateMarketData now updates ALL pairs internally
         const newData = generateMarketData(config.pair);
         const updated = [...prev, newData];
         if (updated.length > 100) updated.shift();
@@ -68,8 +72,8 @@ const App: React.FC = () => {
 
   // 3. Trade Monitoring (SL/TP) - Runs for ALL open trades
   useEffect(() => {
+    // We check SL/TP on every tick of market data updates
     if (marketData.length === 0) return;
-    const currentPrice = marketData[marketData.length - 1].price;
 
     setTrades(prevTrades => {
         let balanceAdjustment = 0;
@@ -79,22 +83,22 @@ const App: React.FC = () => {
         const updatedTrades = prevTrades.map(trade => {
             if (trade.status !== 'OPEN') return trade;
             
-            // Only process trades for the current pair in this simplified simulation loop
-            // In a real app, we would need real-time prices for ALL symbols simultaneously
-            if (trade.symbol !== config.pair) return trade;
+            // Get the current REAL-TIME price for this trade's symbol
+            // This ensures trades on background pairs are monitored correctly
+            const livePrice = getPrice(trade.symbol);
 
             let shouldClose = false;
             let profit = 0;
 
             // Check SL/TP
             if (trade.type === TradeType.BUY) {
-                if (trade.stopLoss && currentPrice <= trade.stopLoss) shouldClose = true;
-                if (trade.takeProfit && currentPrice >= trade.takeProfit) shouldClose = true;
-                if (shouldClose) profit = (currentPrice - trade.price) * trade.amount;
+                if (trade.stopLoss && livePrice <= trade.stopLoss) shouldClose = true;
+                if (trade.takeProfit && livePrice >= trade.takeProfit) shouldClose = true;
+                if (shouldClose) profit = (livePrice - trade.price) * trade.amount;
             } else if (trade.type === TradeType.SELL) {
-                if (trade.stopLoss && currentPrice >= trade.stopLoss) shouldClose = true;
-                if (trade.takeProfit && currentPrice <= trade.takeProfit) shouldClose = true;
-                if (shouldClose) profit = (trade.price - currentPrice) * trade.amount;
+                if (trade.stopLoss && livePrice >= trade.stopLoss) shouldClose = true;
+                if (trade.takeProfit && livePrice <= trade.takeProfit) shouldClose = true;
+                if (shouldClose) profit = (trade.price - livePrice) * trade.amount;
             }
 
             if (shouldClose) {
@@ -112,7 +116,7 @@ const App: React.FC = () => {
                     ...trade,
                     status: 'CLOSED',
                     profit,
-                    closePrice: currentPrice,
+                    closePrice: livePrice,
                     closeTime: new Date()
                 } as Trade;
             }
@@ -132,7 +136,7 @@ const App: React.FC = () => {
 
         return prevTrades;
     });
-  }, [marketData, config.pair]);
+  }, [marketData]); // Run whenever market data updates (which is every tick)
 
   // 4. Automated Entry Logic
   useEffect(() => {
@@ -145,7 +149,10 @@ const App: React.FC = () => {
 
     // Only trade if we don't have too many open positions on THIS pair
     const openTradesForPair = trades.filter(t => t.status === 'OPEN' && t.symbol === config.pair).length;
-    if (openTradesForPair >= 3) return;
+    
+    // Pro users get more concurrent trades
+    const maxTrades = config.isPro ? 10 : 3;
+    if (openTradesForPair >= maxTrades) return;
 
     if (analysis.recommendation === TradeType.BUY && analysis.confidence > 75) {
       executeTrade(TradeType.BUY, currentPrice, analysis.stopLoss, analysis.takeProfit);
@@ -153,7 +160,7 @@ const App: React.FC = () => {
       executeTrade(TradeType.SELL, currentPrice, analysis.stopLoss, analysis.takeProfit);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analysis, config.isActive, config.pair]); 
+  }, [analysis, config.isActive, config.pair, config.isPro]); 
 
   // --- Handlers ---
 
@@ -170,16 +177,20 @@ const App: React.FC = () => {
     if (config.isActive && isAuthenticated) {
       // Trigger immediately on start
       performAnalysis();
+      
+      // Pro users get faster analysis
+      const intervalMs = config.isPro ? 5000 : 10000;
+      
       analysisIntervalRef.current = setInterval(() => {
         performAnalysis();
-      }, 10000);
+      }, intervalMs);
     } else {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
     }
     return () => {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
     };
-  }, [config.isActive, isAuthenticated, config.pair]);
+  }, [config.isActive, isAuthenticated, config.pair, config.isPro]);
 
   const initiateManualTrade = (type: TradeType) => {
     const currentPrice = marketData[marketData.length - 1]?.price || 0;
@@ -200,6 +211,7 @@ const App: React.FC = () => {
     if (config.riskLevel === 'HIGH') riskPct = 0.10;
 
     const tradeValue = config.balance * riskPct;
+    // Calculate amount, ensuring it's not too small for expensive assets like BTC
     const amount = parseFloat((tradeValue / price).toFixed(6));
 
     if (amount <= 0) return;
@@ -258,6 +270,12 @@ const App: React.FC = () => {
         onClose={() => setIsBrokerModalOpen(false)}
         onConnect={(broker) => setConfig(prev => ({ ...prev, broker }))}
       />
+      
+      <UpgradeModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        onUpgrade={() => setConfig(prev => ({ ...prev, isPro: true }))}
+      />
 
       <AIChat 
         marketContext={`Pair: ${config.pair}, Price: ${currentPrice}, Trend: ${priceChange > 0 ? 'Up' : 'Down'}, Active Trades: ${trades.filter(t => t.status === 'OPEN').length}`} 
@@ -313,10 +331,20 @@ const App: React.FC = () => {
               </div>
               <span className="text-lg sm:text-xl font-bold tracking-tight text-white hidden sm:block">NexusTrade AI</span>
               <span className="text-lg font-bold tracking-tight text-white block sm:hidden">Nexus</span>
+              {config.isPro && <span className="px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-xs font-bold ml-1">PRO</span>}
             </div>
             
             <div className="flex items-center gap-3 sm:gap-6">
               
+              {!config.isPro && (
+                  <button 
+                    onClick={() => setIsUpgradeModalOpen(true)}
+                    className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-lg shadow-yellow-900/20 animate-pulse"
+                  >
+                    <Crown className="w-3 h-3" /> UPGRADE
+                  </button>
+              )}
+
               {/* Pair Selector */}
               <div className="relative group">
                 <button className="flex items-center gap-2 bg-gray-800/80 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-white transition-colors">
@@ -423,36 +451,64 @@ const App: React.FC = () => {
                 <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
                    <Activity className="w-5 h-5 text-primary" /> Manual Execution
                 </h3>
-                <div className="grid grid-cols-2 gap-4">
-                   <button 
-                        onClick={() => initiateManualTrade(TradeType.BUY)}
-                        className="py-3 bg-success hover:bg-green-600 text-white rounded-lg font-bold transition-all active:scale-95 shadow-lg shadow-green-900/20 text-sm sm:text-base"
-                   >
-                        BUY MARKET
-                   </button>
-                   <button 
-                        onClick={() => initiateManualTrade(TradeType.SELL)}
-                        className="py-3 bg-danger hover:bg-red-600 text-white rounded-lg font-bold transition-all active:scale-95 shadow-lg shadow-red-900/20 text-sm sm:text-base"
-                   >
-                        SELL MARKET
-                   </button>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <button 
+                    onClick={() => initiateManualTrade(TradeType.BUY)}
+                    className="py-3 bg-success hover:bg-green-600 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    BUY MARKET
+                  </button>
+                  <button 
+                    onClick={() => initiateManualTrade(TradeType.SELL)}
+                    className="py-3 bg-danger hover:bg-red-600 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    SELL MARKET
+                  </button>
+                </div>
+
+                <div className="h-px bg-gray-700/50 mb-6"></div>
+
+                <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+                   <Settings className="w-5 h-5 text-warning" /> Risk Management
+                </h3>
+                
+                <div className="grid grid-cols-3 gap-2 bg-gray-900/50 p-1 rounded-lg border border-gray-700">
+                  {['LOW', 'MEDIUM', 'HIGH'].map((level) => {
+                    const isHigh = level === 'HIGH';
+                    const isLocked = isHigh && !config.isPro;
+                    
+                    return (
+                      <button
+                        key={level}
+                        onClick={() => {
+                          if (isLocked) {
+                            setIsUpgradeModalOpen(true);
+                            return;
+                          }
+                          setConfig(c => ({ ...c, riskLevel: level as any }));
+                        }}
+                        className={`py-2 text-xs font-bold rounded relative overflow-hidden transition-all ${
+                          config.riskLevel === level 
+                            ? 'bg-gray-700 text-white shadow' 
+                            : 'text-gray-500 hover:text-gray-300'
+                        } ${isLocked ? 'cursor-not-allowed opacity-70' : ''}`}
+                      >
+                        {level}
+                        {isLocked && (
+                          <div className="absolute top-1 right-1">
+                            <Lock className="w-3 h-3 text-yellow-500" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
                 
-                {/* Risk Settings */}
-                <div className="mt-6 pt-6 border-t border-gray-700">
-                    <h4 className="text-gray-400 text-sm font-medium mb-3">Risk Configuration</h4>
-                    <div className="flex bg-gray-900 rounded-lg p-1">
-                        {['LOW', 'MEDIUM', 'HIGH'].map(level => (
-                            <button 
-                                key={level}
-                                onClick={() => setConfig(prev => ({...prev, riskLevel: level as any}))}
-                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${config.riskLevel === level ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                            >
-                                {level}
-                            </button>
-                        ))}
-                    </div>
-                </div>
+                {!config.isPro && (
+                  <p className="text-[10px] text-gray-500 mt-2 text-center">
+                    <span className="text-yellow-500">PRO TIP:</span> Upgrade to unlock High Risk strategies.
+                  </p>
+                )}
             </div>
           </div>
         </div>

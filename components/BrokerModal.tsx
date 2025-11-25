@@ -53,9 +53,31 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
 
     // Simulate network request and authentication
     setTimeout(() => {
-      // Simulate a random failure or validation check (e.g., password length)
+      // Simulate Server Address Validation
+      // Checks if the server name looks somewhat valid (contains common keywords or reasonable length)
+      const validServerKeywords = ['server', 'demo', 'live', 'real', 'mt4', 'mt5'];
+      const looksLikeServer = validServerKeywords.some(k => formData.server.toLowerCase().includes(k)) || formData.server.length > 8;
+      
+      if (!looksLikeServer) {
+        setError('Connection Failed: Invalid Server Address. Host not reachable.');
+        setConnecting(false);
+        return;
+      }
+
+      // Simulate Account ID Validation
+      // Assuming valid trading IDs are usually numeric and of decent length
+      if (formData.login.length < 5 || !/^\d+$/.test(formData.login.replace(/\s/g, ''))) {
+         // Allow non-numeric for demo purposes if user types 'demo', but otherwise warn
+         if (!formData.login.toLowerCase().includes('demo')) {
+            setError('Login Error: Trading Account ID not found on server.');
+            setConnecting(false);
+            return;
+         }
+      }
+
+      // Simulate Password Validation
       if (formData.password.length < 6) {
-        setError('Authentication Failed: Invalid credentials or server timeout.');
+        setError('Authentication Failed: Password incorrect.');
         setConnecting(false);
         return;
       }
@@ -112,7 +134,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
 
           {/* Error Display */}
           {error && (
-            <div className="mb-4 p-3 bg-danger/10 border border-danger/20 rounded-lg flex items-center gap-2 text-sm text-danger">
+            <div className="mb-4 p-3 bg-danger/10 border border-danger/20 rounded-lg flex items-center gap-2 text-sm text-danger animate-pulse">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               <span>{error}</span>
             </div>
