@@ -23,6 +23,10 @@ export interface Trade {
   closePrice?: number;
   closeTime?: Date;
   status: 'OPEN' | 'CLOSED';
+  // Trailing Stop Fields
+  highestPrice?: number; // For tracking max price reached in a BUY
+  lowestPrice?: number;  // For tracking min price reached in a SELL
+  isTrailing?: boolean;  // If the SL has started trailing
 }
 
 export interface AnalysisResult {
@@ -41,5 +45,5 @@ export interface BotConfig {
   balance: number;
   broker?: string;
   isPro: boolean;
-  paymentStatus: 'UNPAID' | 'PENDING' | 'VERIFIED'; // Added verification status
+  paymentStatus: 'UNPAID' | 'PENDING' | 'VERIFIED';
 }

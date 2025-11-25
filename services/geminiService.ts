@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MarketDataPoint, AnalysisResult, TradeType, BotConfig } from "../types";
+import { calculateRSI, calculateSMA } from "./marketService";
 
 // Helper to get formatted date
 const getCurrentTimestamp = () => new Date().toISOString();
@@ -29,23 +30,55 @@ export const analyzeMarket = async (
     };
   }
 
-  // Prepare the prompt context
-  const recentData = dataHistory.slice(-20); // Send last 20 points
+  // Calculate Technical Indicators
+  const recentData = dataHistory.slice(-50); // Need more data for accurate SMA
   const currentPrice = recentData[recentData.length - 1].price;
   
-  const prompt = `
-    You are an expert AI trading bot analyzing ${pair}.
-    Current Date: ${getCurrentTimestamp()}
-    Current Balance: $${currentBalance}
-    Risk Profile: ${riskLevel}
-    Current Price: ${currentPrice}
-    
-    Market Data (Last 20 ticks for ${pair}):
-    ${JSON.stringify(recentData)}
+  const rsi = calculateRSI(recentData, 14);
+  const smaShort = calculateSMA(recentData, 7); // Fast MA
+  const smaLong = calculateSMA(recentData, 20); // Slow MA
 
-    Analyze the price trend for ${pair}.
-    Determine if I should BUY, SELL, or HOLD.
-    Calculate a dynamic Stop Loss and Take Profit based on the ${riskLevel} risk profile and the specific volatility of ${pair}.
+  // Format indicators for prompt
+  const technicals = `
+    Price: ${currentPrice}
+    RSI (14): ${rsi ? rsi.toFixed(2) : 'Insufficient Data'}
+    SMA (7): ${smaShort ? smaShort.toFixed(5) : 'N/A'}
+    SMA (20): ${smaLong ? smaLong.toFixed(5) : 'N/A'}
+    Trend Alignment: ${smaShort && smaLong ? (smaShort > smaLong ? 'BULLISH' : 'BEARISH') : 'Neutral'}
+  `;
+  
+  const prompt = `
+    You are an elite institutional trading AI (Nexus Core) analyzing ${pair}.
+    
+    OBJECTIVE: Identify high-probability "Sniper Entries".
+    TARGET ACCURACY: 90%
+    
+    CURRENT STATUS:
+    Balance: $${currentBalance}
+    Risk Profile: ${riskLevel}
+    
+    TECHNICALS:
+    ${technicals}
+    
+    RECENT PRICE ACTION (Last 10 Ticks):
+    ${JSON.stringify(recentData.slice(-10).map(d => d.price))}
+
+    ANALYSIS RULES:
+    1. MARKET STRUCTURE: Identify Higher Highs (Bullish) or Lower Lows (Bearish).
+    2. KEY LEVELS: Simulate Support/Resistance based on the provided price history.
+    3. RSI CONFIRMATION: 
+       - BUY only if RSI < 35 (Oversold) OR breaking out of consolidation with Bullish Trend.
+       - SELL only if RSI > 65 (Overbought) OR breaking down with Bearish Trend.
+    4. PRECISION: Do not trade choppy markets. If unsure, HOLD.
+    5. RISK: Set Stop Loss at the nearest swing low (for BUY) or swing high (for SELL).
+    
+    OUTPUT REQUIREMENTS:
+    Return a strict JSON object.
+    - recommendation: "BUY", "SELL", or "HOLD"
+    - confidence: 0-100 (Only trade if > 80)
+    - reasoning: Brief, professional explanation of the setup (e.g., "RSI Divergence at Support", "Trend Continuation").
+    - stopLoss: Specific price
+    - takeProfit: Specific price (Aim for 1:2 Risk/Reward)
   `;
 
   try {
@@ -59,7 +92,7 @@ export const analyzeMarket = async (
           properties: {
             recommendation: { type: Type.STRING, enum: ["BUY", "SELL", "HOLD"] },
             confidence: { type: Type.NUMBER, description: "Confidence score between 0 and 100" },
-            reasoning: { type: Type.STRING, description: "Short, tactical explanation of the decision (max 1 sentence)." },
+            reasoning: { type: Type.STRING, description: "Technical reasoning based on RSI and SMA." },
             stopLoss: { type: Type.NUMBER, description: "Recommended stop loss price" },
             takeProfit: { type: Type.NUMBER, description: "Recommended take profit price" }
           },
@@ -89,7 +122,6 @@ export const analyzeMarket = async (
 
   } catch (error) {
     console.error("Gemini Analysis Failed:", error);
-    // Fallback safe mode
     return {
       recommendation: TradeType.HOLD,
       confidence: 0,
@@ -105,7 +137,6 @@ export const chatWithAssistant = async (message: string, marketContext: string, 
   const ai = getAIClient();
   if (!ai) return "I cannot reply without an API Key.";
 
-  // STRICT ACCESS CONTROL LOGIC INJECTION
   const systemInstructions = `
     You are the access-control and logic engine for the NexusTrade application.
     

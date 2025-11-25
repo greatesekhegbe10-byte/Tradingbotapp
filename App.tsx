@@ -57,7 +57,6 @@ const App: React.FC = () => {
   // Handle Payment Verification Simulation
   useEffect(() => {
     if (config.paymentStatus === 'PENDING') {
-      // If API key was provided, verify faster (3s) vs manual (8s)
       const delay = isApiVerification ? 3000 : 8000;
       const bankName = paymentMethod === 'local' ? 'Kuda Bank' : 'Grey';
       
@@ -89,9 +88,8 @@ const App: React.FC = () => {
 
   // 1. Initialize or Switch Market Data when Pair changes
   useEffect(() => {
-    // Generate fresh history for the new pair immediately to avoid empty chart
     setMarketData(generateInitialHistory(50, config.pair));
-    setAnalysis(null); // Reset analysis for new pair
+    setAnalysis(null); 
   }, [config.pair]);
 
   // 2. Real-time Market Ticker
@@ -99,7 +97,6 @@ const App: React.FC = () => {
     if (!isAuthenticated) return;
     const interval = setInterval(() => {
       setMarketData(prev => {
-        // generateMarketData now updates ALL pairs internally
         const newData = generateMarketData(config.pair);
         const updated = [...prev, newData];
         if (updated.length > 100) updated.shift();
@@ -109,9 +106,8 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isAuthenticated, config.pair]);
 
-  // 3. Trade Monitoring (SL/TP) - Runs for ALL open trades
+  // 3. Trade Monitoring (Trailing SL & TP)
   useEffect(() => {
-    // We check SL/TP on every tick of market data updates
     if (marketData.length === 0) return;
 
     setTrades(prevTrades => {
@@ -122,40 +118,78 @@ const App: React.FC = () => {
         const updatedTrades = prevTrades.map(trade => {
             if (trade.status !== 'OPEN') return trade;
             
-            // Get the current REAL-TIME price for this trade's symbol
-            // This ensures trades on background pairs are monitored correctly
             const livePrice = getPrice(trade.symbol);
-
             let shouldClose = false;
             let profit = 0;
+            let currentSL = trade.stopLoss || 0;
+            let newSL = currentSL;
+            let isTrailing = trade.isTrailing || false;
+            let updatedHighest = trade.highestPrice || trade.price;
+            let updatedLowest = trade.lowestPrice || trade.price;
 
-            // Check SL/TP
+            // --- TRAILING STOP LOGIC ---
+            // If profit exceeds 0.5%, move SL to Break Even.
+            // If profit exceeds 1.5%, trail price by 0.5%.
+
             if (trade.type === TradeType.BUY) {
-                if (trade.stopLoss && livePrice <= trade.stopLoss) shouldClose = true;
+                // Update Highest Point
+                if (livePrice > updatedHighest) updatedHighest = livePrice;
+                
+                const currentProfitPct = (livePrice - trade.price) / trade.price;
+
+                // Move to Break Even
+                if (currentProfitPct > 0.005 && currentSL < trade.price) {
+                    newSL = trade.price;
+                    isTrailing = true;
+                }
+                // Trail Logic
+                const trailGap = trade.price * 0.005; // 0.5% trailing gap
+                const potentialSL = livePrice - trailGap;
+                
+                if (currentProfitPct > 0.015 && potentialSL > newSL) {
+                    newSL = potentialSL;
+                    isTrailing = true;
+                }
+
+                // Check Trigger
+                if (trade.stopLoss && livePrice <= currentSL) shouldClose = true;
                 if (trade.takeProfit && livePrice >= trade.takeProfit) shouldClose = true;
                 if (shouldClose) profit = (livePrice - trade.price) * trade.amount;
+
             } else if (trade.type === TradeType.SELL) {
-                if (trade.stopLoss && livePrice >= trade.stopLoss) shouldClose = true;
+                // Update Lowest Point
+                if (livePrice < updatedLowest) updatedLowest = livePrice;
+
+                const currentProfitPct = (trade.price - livePrice) / trade.price;
+
+                // Move to Break Even
+                if (currentProfitPct > 0.005 && currentSL > trade.price) {
+                    newSL = trade.price;
+                    isTrailing = true;
+                }
+                // Trail Logic
+                const trailGap = trade.price * 0.005; 
+                const potentialSL = livePrice + trailGap;
+
+                if (currentProfitPct > 0.015 && potentialSL < newSL) {
+                    newSL = potentialSL;
+                    isTrailing = true;
+                }
+
+                // Check Trigger
+                if (trade.stopLoss && livePrice >= currentSL) shouldClose = true;
                 if (trade.takeProfit && livePrice <= trade.takeProfit) shouldClose = true;
                 if (shouldClose) profit = (trade.price - livePrice) * trade.amount;
             }
 
+            // Close Trade Logic
             if (shouldClose) {
                 hasUpdates = true;
-                
-                // Return Logic:
-                // We deducted (trade.price * trade.amount) as margin when opening.
-                // We now return Margin + Profit (or Margin - Loss).
-                // trade.amount was calculated based on entry price, so Margin ~= EntryPrice * Amount.
                 const initialMargin = trade.price * trade.amount;
                 balanceAdjustment += initialMargin + profit;
                 
-                // Adjust holdings (simplified)
-                if (trade.type === TradeType.BUY) {
-                     holdingsAdjustment -= trade.amount;
-                } else {
-                     holdingsAdjustment += trade.amount;
-                }
+                if (trade.type === TradeType.BUY) holdingsAdjustment -= trade.amount;
+                else holdingsAdjustment += trade.amount;
                 
                 return {
                     ...trade,
@@ -165,24 +199,38 @@ const App: React.FC = () => {
                     closeTime: new Date()
                 } as Trade;
             }
+
+            // Update SL if trailing happened
+            if (newSL !== currentSL || updatedHighest !== trade.highestPrice || updatedLowest !== trade.lowestPrice) {
+                hasUpdates = true;
+                return {
+                    ...trade,
+                    stopLoss: newSL,
+                    highestPrice: updatedHighest,
+                    lowestPrice: updatedLowest,
+                    isTrailing: isTrailing
+                };
+            }
+
             return trade;
         });
 
         if (hasUpdates) {
-             // Defer state update to avoid conflicts during render
              setTimeout(() => {
                 setConfig(c => ({ ...c, balance: c.balance + balanceAdjustment }));
                 if (Math.abs(holdingsAdjustment) > 0) {
                      setCurrentHoldings(h => h + holdingsAdjustment);
                 }
-                setNotification({ message: 'Trade Closed - Balance Updated', type: 'success' });
+                if (balanceAdjustment > 0) {
+                   setNotification({ message: `Trade Closed via Smart Trail: +$${balanceAdjustment.toFixed(2)}`, type: 'success' });
+                }
              }, 0);
              return updatedTrades;
         }
 
         return prevTrades;
     });
-  }, [marketData]); // Run whenever market data updates (which is every tick)
+  }, [marketData]);
 
   // 4. Automated Entry Logic
   useEffect(() => {
@@ -191,27 +239,24 @@ const App: React.FC = () => {
     if (!currentPrice) return;
 
     const timeSinceAnalysis = new Date().getTime() - analysis.timestamp.getTime();
-    if (timeSinceAnalysis > 15000) return; // Increased validity window
+    if (timeSinceAnalysis > 15000) return; 
 
-    // Only trade if we don't have too many open positions on THIS pair
     const openTradesForPair = trades.filter(t => t.status === 'OPEN' && t.symbol === config.pair).length;
-    
-    // Pro users get more concurrent trades
     const maxTrades = config.isPro ? 10 : 3;
     if (openTradesForPair >= maxTrades) return;
 
-    if (analysis.recommendation === TradeType.BUY && analysis.confidence > 75) {
+    // INCREASED CONFIDENCE THRESHOLD FOR 8/10 WIN RATE
+    if (analysis.recommendation === TradeType.BUY && analysis.confidence > 80) {
       executeTrade(TradeType.BUY, currentPrice, analysis.stopLoss, analysis.takeProfit);
-    } else if (analysis.recommendation === TradeType.SELL && analysis.confidence > 60) {
+    } else if (analysis.recommendation === TradeType.SELL && analysis.confidence > 75) {
       executeTrade(TradeType.SELL, currentPrice, analysis.stopLoss, analysis.takeProfit);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysis, config.isActive, config.pair, config.isPro]); 
 
   // --- Handlers ---
 
   const performAnalysis = useCallback(async () => {
-    if (isAnalyzing || marketData.length < 20) return;
+    if (isAnalyzing || marketData.length < 50) return; // Wait for enough data for RSI
     
     setIsAnalyzing(true);
     const result = await analyzeMarket(marketData, config.balance, config.riskLevel, config.pair);
@@ -221,15 +266,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (config.isActive && isAuthenticated) {
-      // Trigger immediately on start
       performAnalysis();
-      
-      // Pro users get faster analysis
       const intervalMs = config.isPro ? 5000 : 10000;
-      
-      analysisIntervalRef.current = setInterval(() => {
-        performAnalysis();
-      }, intervalMs);
+      analysisIntervalRef.current = setInterval(performAnalysis, intervalMs);
     } else {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
     }
@@ -245,7 +284,6 @@ const App: React.FC = () => {
 
   const confirmTrade = () => {
     if (pendingTrade) {
-      // Execute at current market price, not the price when modal opened (slippage/realism)
       const executionPrice = getPrice(config.pair);
       executeTrade(pendingTrade.type, executionPrice);
       setPendingTrade(null);
@@ -253,24 +291,20 @@ const App: React.FC = () => {
   };
 
   const executeTrade = (type: TradeType, price: number, sl?: number, tp?: number) => {
-    // Dynamic Position Sizing
     let riskPct = 0.02; // Low
     if (config.riskLevel === 'MEDIUM') riskPct = 0.05;
     if (config.riskLevel === 'HIGH') riskPct = 0.10;
 
     const tradeValue = config.balance * riskPct;
-    // Calculate amount, ensuring it's not too small for expensive assets like BTC
     const amount = parseFloat((tradeValue / price).toFixed(6));
 
     if (amount <= 0) return;
 
-    // Safety check for balance - applied to BOTH Buy and Sell as Margin
     if (config.balance < tradeValue) {
         setNotification({ message: 'Insufficient balance for trade margin', type: 'error' });
         return;
     }
 
-    // Default SL/TP if manual
     const stopLoss = sl || (type === TradeType.BUY ? price * 0.98 : price * 1.02);
     const takeProfit = tp || (type === TradeType.BUY ? price * 1.05 : price * 0.95);
 
@@ -283,20 +317,18 @@ const App: React.FC = () => {
       timestamp: new Date(),
       status: 'OPEN',
       stopLoss,
-      takeProfit
+      takeProfit,
+      highestPrice: price, // Initialize for trailing
+      lowestPrice: price   // Initialize for trailing
     };
 
     setTrades(prev => [newTrade, ...prev]);
-
-    // Deduct balance for BOTH Buy and Sell (Margin Lock)
-    // We treat 'tradeValue' as the margin requirement for the position
     setConfig(prev => ({ ...prev, balance: prev.balance - tradeValue }));
     
-    // Update holdings
     if (type === TradeType.BUY) {
-        setCurrentHoldings(prev => prev + amount); // Positive exposure
+        setCurrentHoldings(prev => prev + amount); 
     } else {
-        setCurrentHoldings(prev => prev - amount); // Negative exposure (Short)
+        setCurrentHoldings(prev => prev - amount); 
     }
   };
 
@@ -338,7 +370,6 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-background text-gray-200 font-sans pb-12 relative">
       
-      {/* Toast Notification */}
       {notification && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[70] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-fade-in border ${
           notification.type === 'success' ? 'bg-green-900/90 border-green-500 text-white' : 
@@ -364,13 +395,11 @@ const App: React.FC = () => {
         onUpgrade={handleProUpgrade}
       />
 
-      {/* AI Chat now receives full config to enforce Access Control */}
       <AIChat 
         marketContext={`Pair: ${config.pair}, Price: ${currentPrice}, Trend: ${priceChange > 0 ? 'Up' : 'Down'}, Active Trades: ${trades.filter(t => t.status === 'OPEN').length}`} 
         config={config}
       />
 
-      {/* Trade Confirmation Modal */}
       {pendingTrade && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-xl shadow-2xl p-6 transform transition-all scale-100">
@@ -483,7 +512,6 @@ const App: React.FC = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8">
         
-        {/* Warning / Notifications */}
         {!process.env.API_KEY && (
            <div className="bg-yellow-900/20 border border-yellow-700/50 text-yellow-200 p-4 rounded-xl mb-8 flex items-center gap-3 animate-fade-in">
              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
@@ -491,7 +519,6 @@ const App: React.FC = () => {
            </div>
         )}
 
-        {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatsCard 
             label={`Live Price`} 
@@ -523,16 +550,13 @@ const App: React.FC = () => {
           />
         </div>
 
-        {/* Main Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Left Column: Chart & History */}
           <div className="lg:col-span-2 space-y-8 min-w-0">
             <ChartPanel data={marketData} pair={config.pair} trades={trades} />
             <TradeHistory trades={trades} />
           </div>
 
-          {/* Right Column: AI & Controls */}
           <div className="space-y-8 min-w-0">
             <BotStatusPanel 
               analysis={analysis} 
@@ -541,7 +565,6 @@ const App: React.FC = () => {
               isAnalyzing={isAnalyzing}
             />
             
-            {/* Manual Controls */}
             <div className="bg-surface p-6 rounded-xl border border-gray-700">
                 <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
                    <Activity className="w-5 h-5 text-primary" /> Manual Execution
