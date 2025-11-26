@@ -1,19 +1,20 @@
+
 import React, { useState, useEffect } from 'react';
-import { X, Server, Globe, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Server, Globe, CheckCircle, AlertCircle, Zap } from 'lucide-react';
 
 interface BrokerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConnect: (broker: string) => void;
+  onConnect: (broker: string, isLive: boolean) => void;
 }
 
 export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onConnect }) => {
-  const [selectedBroker, setSelectedBroker] = useState('MetaTrader 5');
+  const [selectedBroker, setSelectedBroker] = useState('Pocket Option');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
-    server: 'Demo-Server-US',
+    server: 'Live-Server-1',
     login: '',
     password: ''
   });
@@ -22,7 +23,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
   useEffect(() => {
     if (isOpen) {
       setFormData({
-        server: 'Demo-Server-US',
+        server: 'Live-Server-1',
         login: '',
         password: ''
       });
@@ -54,9 +55,8 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
     // Simulate network request and authentication
     setTimeout(() => {
       // Simulate Server Address Validation
-      // Checks if the server name looks somewhat valid (contains common keywords or reasonable length)
-      const validServerKeywords = ['server', 'demo', 'live', 'real', 'mt4', 'mt5'];
-      const looksLikeServer = validServerKeywords.some(k => formData.server.toLowerCase().includes(k)) || formData.server.length > 8;
+      const validServerKeywords = ['server', 'demo', 'live', 'real', 'mt4', 'mt5', 'pocket', 'quotex', 'iq', 'api'];
+      const looksLikeServer = validServerKeywords.some(k => formData.server.toLowerCase().includes(k)) || formData.server.length > 3;
       
       if (!looksLikeServer) {
         setError('Connection Failed: Invalid Server Address. Host not reachable.');
@@ -65,9 +65,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
       }
 
       // Simulate Account ID Validation
-      // Assuming valid trading IDs are usually numeric and of decent length
-      if (formData.login.length < 5 || !/^\d+$/.test(formData.login.replace(/\s/g, ''))) {
-         // Allow non-numeric for demo purposes if user types 'demo', but otherwise warn
+      if (formData.login.length < 5) {
          if (!formData.login.toLowerCase().includes('demo')) {
             setError('Login Error: Trading Account ID not found on server.');
             setConnecting(false);
@@ -82,17 +80,24 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
         return;
       }
 
-      onConnect(selectedBroker);
+      // Detect Live vs Demo
+      const isLive = formData.server.toLowerCase().includes('live') || formData.server.toLowerCase().includes('real');
+
+      onConnect(selectedBroker, isLive);
       setConnecting(false);
       onClose();
     }, 2000);
   };
 
   const brokers = [
-    { name: 'MetaTrader 5', icon: 'M5' },
-    { name: 'MetaTrader 4', icon: 'M4' },
-    { name: 'Binance', icon: 'B' },
-    { name: 'Interactive Brokers', icon: 'IB' },
+    { name: 'Pocket Option', icon: 'PO', color: 'text-blue-400 border-blue-400' },
+    { name: 'Quotex', icon: 'QX', color: 'text-orange-400 border-orange-400' },
+    { name: 'IQ Option', icon: 'IQ', color: 'text-orange-500 border-orange-500' },
+    { name: 'Deriv / Binary', icon: 'D', color: 'text-red-400 border-red-400' },
+    { name: 'MetaTrader 5', icon: 'M5', color: 'text-green-400 border-green-400' },
+    { name: 'MetaTrader 4', icon: 'M4', color: 'text-green-400 border-green-400' },
+    { name: 'Binance', icon: 'B', color: 'text-yellow-400 border-yellow-400' },
+    { name: 'Custom Webhook', icon: 'API', color: 'text-purple-400 border-purple-400' },
   ];
 
   return (
@@ -101,7 +106,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/50">
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold text-white">Connect Broker Account</h2>
+            <h2 className="text-lg font-semibold text-white">Universal Broker Connect</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
             <X className="w-5 h-5" />
@@ -110,7 +115,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
 
         <div className="p-6">
           <p className="text-sm text-gray-400 mb-6 hidden sm:block">
-            Securely connect your brokerage account to enable automated execution. NexusTrade supports all major regions including restricted zones via high-speed proxy routing.
+            NexusTrade's <span className="text-primary font-bold">Universal Bridge™</span> supports all major CFDs, Binary Options, and Spot brokers. API routing ensures low-latency execution.
           </p>
 
           {/* Broker Selection */}
@@ -122,12 +127,12 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
                 onClick={() => setSelectedBroker(b.name)}
                 className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
                   selectedBroker === b.name 
-                    ? 'bg-primary/20 border-primary text-white' 
+                    ? `bg-gray-800 ${b.color} shadow-lg shadow-black/40` 
                     : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:bg-gray-800'
                 }`}
               >
-                <span className="text-xl font-bold mb-1">{b.icon}</span>
-                <span className="text-[10px] text-center leading-tight truncate w-full">{b.name}</span>
+                <span className="text-xl font-black mb-1">{b.icon}</span>
+                <span className="text-[10px] text-center leading-tight truncate w-full font-medium">{b.name}</span>
               </button>
             ))}
           </div>
@@ -143,7 +148,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
           {/* Connection Form */}
           <form onSubmit={handleConnect} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Server / Region</label>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Server / API Endpoint</label>
               <div className="relative">
                 <Server className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
                 <input 
@@ -152,14 +157,14 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
                   value={formData.server}
                   onChange={handleInputChange}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-9 pr-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
-                  placeholder="e.g. MetaQuotes-Demo"
+                  placeholder="e.g. live-server-1.pocketoption.com"
                 />
               </div>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Login ID</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Login ID / API Key</label>
                 <input 
                   type="text" 
                   name="login"
@@ -170,7 +175,7 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Password</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Password / Secret</label>
                 <input 
                   type="password" 
                   name="password"
@@ -192,14 +197,19 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
               {connecting ? (
                 <span className="flex items-center gap-2">
                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                   Connecting...
+                   Fetching Balance...
                 </span>
               ) : (
                 <>
-                  <CheckCircle className="w-4 h-4" /> Connect {selectedBroker}
+                  <Zap className="w-4 h-4 fill-current" /> Connect {selectedBroker}
                 </>
               )}
             </button>
+            <div className="text-center">
+                 <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-success" /> SSL Encrypted Connection
+                 </p>
+            </div>
           </form>
         </div>
       </div>

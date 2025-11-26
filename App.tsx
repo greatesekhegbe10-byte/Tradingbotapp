@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu, Crown, Lock, CheckCircle, Loader2 } from 'lucide-react';
 import { StatsCard } from './components/StatsCard';
@@ -6,24 +7,28 @@ import { BotStatusPanel } from './components/BotStatusPanel';
 import { TradeHistory } from './components/TradeHistory';
 import { AuthPage } from './components/AuthPage';
 import { BrokerModal } from './components/BrokerModal';
-import { UpgradeModal } from './components/UpgradeModal';
+import { SettingsModal } from './components/SettingsModal';
 import { AIChat } from './components/AIChat';
 import { MarketDataPoint, Trade, TradeType, AnalysisResult, BotConfig } from './types';
-import { generateMarketData, generateInitialHistory, getPrice } from './services/marketService';
+import { generateMarketData, generateInitialHistory, getPrice, getPairDetails } from './services/marketService';
 import { analyzeMarket } from './services/geminiService';
 
 const AVAILABLE_PAIRS = [
   'BTC/USD', 'ETH/USD', 'SOL/USD', 
-  'XAU/USD', 
-  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF',
-  'NZD/USD', 'EUR/GBP', 'EUR/JPY'
+  'XAU/USD', 'WTI/USD', 'BRENT/USD',
+  'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF', 'NZD/USD',
+  'GBP/JPY', 'EUR/JPY', 'EUR/GBP', 'GBP/CAD', 'CAD/JPY', 'AUD/JPY', 'NZD/JPY',
+  'EUR/CHF', 'GBP/CHF', 'CAD/CHF', 'AUD/CAD', 'AUD/NZD', 'NZD/CAD', 'CHF/JPY',
+  'EUR/CAD', 'EUR/AUD', 'EUR/NZD', 'EUR/SEK', 'EUR/SGD', 'GBP/SEK', 'GBP/NZD',
+  'AUD/SGD', 'AUD/CHF', 'NZD/CHF', 'SGD/JPY',
+  'USD/NOK', 'USD/SEK', 'USD/ZAR', 'USD/HKD', 'USD/TRY', 'USD/MXN', 'USD/SGD', 'USD/PLN', 'USD/HUF'
 ];
 
 const App: React.FC = () => {
   // --- Auth State ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
-  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // --- App State ---
   const [marketData, setMarketData] = useState<MarketDataPoint[]>([]);
@@ -32,6 +37,10 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'pending' | 'error'} | null>(null);
   
+  // Wallet State
+  const [balances, setBalances] = useState({ DEMO: 10000, LIVE: 0 });
+  const [accountType, setAccountType] = useState<'DEMO' | 'LIVE'>('DEMO');
+
   // Confirmation Modal State
   const [pendingTrade, setPendingTrade] = useState<{ type: TradeType; price: number } | null>(null);
 
@@ -39,7 +48,7 @@ const App: React.FC = () => {
     isActive: false,
     riskLevel: 'MEDIUM',
     pair: 'BTC/USD',
-    balance: 100000,
+    balance: 10000, 
     broker: undefined,
     isPro: false, // Default to free plan
     paymentStatus: 'UNPAID'
@@ -47,7 +56,7 @@ const App: React.FC = () => {
 
   // Track if payment was verified via API Key (simulated)
   const [isApiVerification, setIsApiVerification] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'local' | 'foreign' | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'local' | 'foreign' | 'crypto' | null>(null);
 
   const [currentHoldings, setCurrentHoldings] = useState<number>(0);
   const analysisIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -56,27 +65,39 @@ const App: React.FC = () => {
 
   // Handle Payment Verification Simulation
   useEffect(() => {
+    // If status is PENDING, start verification timer
     if (config.paymentStatus === 'PENDING') {
       const delay = isApiVerification ? 3000 : 8000;
-      const bankName = paymentMethod === 'local' ? 'Kuda Bank' : 'Grey';
+      const providerName = paymentMethod === 'local' ? 'Kuda Bank' : paymentMethod === 'foreign' ? 'Grey' : 'Blockchain';
       
       const timer = setTimeout(() => {
+        // Unlock Pro Features
         setConfig(prev => ({
           ...prev,
           paymentStatus: 'VERIFIED',
           isPro: true
         }));
+        
         setNotification({
           message: isApiVerification 
-            ? `${bankName} API Confirmed Payment! Pro features unlocked.` 
-            : `Payment Verified by ${bankName}! Pro features unlocked.`,
+            ? `API Verification Successful! Connected to ${providerName}. Pro Features Active.` 
+            : `Payment Verified by ${providerName}! Pro Features Active.`,
           type: 'success'
         });
       }, delay);
       
       return () => clearTimeout(timer);
+    } 
+    // If status is UNPAID, ensure Pro is locked
+    else if (config.paymentStatus === 'UNPAID') {
+        setConfig(prev => ({ ...prev, isPro: false }));
     }
   }, [config.paymentStatus, isApiVerification, paymentMethod]);
+
+  // Sync balances state with config.balance when account type changes
+  useEffect(() => {
+    setConfig(prev => ({ ...prev, balance: balances[accountType] }));
+  }, [accountType, balances]);
 
   // Notification Timer
   useEffect(() => {
@@ -127,14 +148,10 @@ const App: React.FC = () => {
             let updatedHighest = trade.highestPrice || trade.price;
             let updatedLowest = trade.lowestPrice || trade.price;
 
-            // --- TRAILING STOP LOGIC ---
-            // If profit exceeds 0.5%, move SL to Break Even.
-            // If profit exceeds 1.5%, trail price by 0.5%.
-
+            // --- TRAILING STOP LOGIC (Smart Profit Lock) ---
             if (trade.type === TradeType.BUY) {
                 // Update Highest Point
                 if (livePrice > updatedHighest) updatedHighest = livePrice;
-                
                 const currentProfitPct = (livePrice - trade.price) / trade.price;
 
                 // Move to Break Even
@@ -145,12 +162,10 @@ const App: React.FC = () => {
                 // Trail Logic
                 const trailGap = trade.price * 0.005; // 0.5% trailing gap
                 const potentialSL = livePrice - trailGap;
-                
                 if (currentProfitPct > 0.015 && potentialSL > newSL) {
                     newSL = potentialSL;
                     isTrailing = true;
                 }
-
                 // Check Trigger
                 if (trade.stopLoss && livePrice <= currentSL) shouldClose = true;
                 if (trade.takeProfit && livePrice >= trade.takeProfit) shouldClose = true;
@@ -159,7 +174,6 @@ const App: React.FC = () => {
             } else if (trade.type === TradeType.SELL) {
                 // Update Lowest Point
                 if (livePrice < updatedLowest) updatedLowest = livePrice;
-
                 const currentProfitPct = (trade.price - livePrice) / trade.price;
 
                 // Move to Break Even
@@ -170,12 +184,10 @@ const App: React.FC = () => {
                 // Trail Logic
                 const trailGap = trade.price * 0.005; 
                 const potentialSL = livePrice + trailGap;
-
                 if (currentProfitPct > 0.015 && potentialSL < newSL) {
                     newSL = potentialSL;
                     isTrailing = true;
                 }
-
                 // Check Trigger
                 if (trade.stopLoss && livePrice >= currentSL) shouldClose = true;
                 if (trade.takeProfit && livePrice <= trade.takeProfit) shouldClose = true;
@@ -186,6 +198,7 @@ const App: React.FC = () => {
             if (shouldClose) {
                 hasUpdates = true;
                 const initialMargin = trade.price * trade.amount;
+                // Return Margin + Profit (Profit can be negative)
                 balanceAdjustment += initialMargin + profit;
                 
                 if (trade.type === TradeType.BUY) holdingsAdjustment -= trade.amount;
@@ -211,18 +224,22 @@ const App: React.FC = () => {
                     isTrailing: isTrailing
                 };
             }
-
             return trade;
         });
 
         if (hasUpdates) {
+             // Update the specific wallet balance based on active account
              setTimeout(() => {
-                setConfig(c => ({ ...c, balance: c.balance + balanceAdjustment }));
+                setBalances(prev => ({
+                    ...prev,
+                    [accountType]: prev[accountType] + balanceAdjustment
+                }));
+
                 if (Math.abs(holdingsAdjustment) > 0) {
                      setCurrentHoldings(h => h + holdingsAdjustment);
                 }
                 if (balanceAdjustment > 0) {
-                   setNotification({ message: `Trade Closed via Smart Trail: +$${balanceAdjustment.toFixed(2)}`, type: 'success' });
+                   setNotification({ message: `Smart Trail: Position Closed`, type: 'success' });
                 }
              }, 0);
              return updatedTrades;
@@ -230,7 +247,65 @@ const App: React.FC = () => {
 
         return prevTrades;
     });
-  }, [marketData]);
+  }, [marketData, accountType]);
+
+  // --- Core Actions ---
+
+  const executeTrade = useCallback((type: TradeType, price: number, sl?: number, tp?: number, recommendedAmount?: number) => {
+    // 1. Determine Position Size (Amount)
+    let amount = recommendedAmount;
+
+    if (!amount) {
+        // Fallback Calculation if AI didn't provide specific amount
+        const riskPct = config.riskLevel === 'HIGH' ? 0.10 : config.riskLevel === 'MEDIUM' ? 0.05 : 0.01;
+        const currentBalance = balances[accountType];
+        const capitalToRisk = currentBalance * riskPct; 
+        
+        // Simple fallback: Amount = CapitalToRisk / Price
+        amount = capitalToRisk / price; 
+    }
+
+    // 2. Strict Balance Check (Margin)
+    const marginRequired = price * amount;
+    const currentBalance = balances[accountType];
+    
+    if (marginRequired > currentBalance) {
+        setNotification({ message: `Insufficient ${accountType} Balance ($${currentBalance.toFixed(2)}) for trade requiring $${marginRequired.toFixed(2)}`, type: 'error' });
+        return;
+    }
+
+    // 3. Execute
+    const newTrade: Trade = {
+      id: Date.now().toString(),
+      symbol: config.pair,
+      type,
+      price,
+      amount: parseFloat(amount.toFixed(6)), // Avoid floating point precision issues
+      timestamp: new Date(),
+      status: 'OPEN',
+      stopLoss: sl,
+      takeProfit: tp,
+      highestPrice: type === TradeType.BUY ? price : undefined,
+      lowestPrice: type === TradeType.SELL ? price : undefined,
+      isTrailing: false
+    };
+
+    setTrades(prev => [newTrade, ...prev]);
+    
+    // Deduct from specific wallet
+    setBalances(prev => ({
+        ...prev,
+        [accountType]: prev[accountType] - marginRequired
+    }));
+
+    if (type === TradeType.BUY) setCurrentHoldings(prev => prev + amount!);
+    else setCurrentHoldings(prev => prev + amount!); // Short exposure
+
+    setNotification({ 
+        message: `${type} Executed on ${config.pair}. Margin Deducted: $${marginRequired.toFixed(2)} (${accountType})`, 
+        type: 'success' 
+    });
+  }, [config.riskLevel, config.pair, accountType, balances]);
 
   // 4. Automated Entry Logic
   useEffect(() => {
@@ -245,24 +320,31 @@ const App: React.FC = () => {
     const maxTrades = config.isPro ? 10 : 3;
     if (openTradesForPair >= maxTrades) return;
 
-    // INCREASED CONFIDENCE THRESHOLD FOR 8/10 WIN RATE
-    if (analysis.recommendation === TradeType.BUY && analysis.confidence > 80) {
-      executeTrade(TradeType.BUY, currentPrice, analysis.stopLoss, analysis.takeProfit);
-    } else if (analysis.recommendation === TradeType.SELL && analysis.confidence > 75) {
-      executeTrade(TradeType.SELL, currentPrice, analysis.stopLoss, analysis.takeProfit);
+    // HIGH SUCCESS RATE FILTER
+    if (analysis.confidence >= 80) {
+        if (analysis.recommendation === TradeType.BUY || analysis.recommendation === TradeType.SELL) {
+             executeTrade(
+                 analysis.recommendation, 
+                 currentPrice, 
+                 analysis.stopLoss, 
+                 analysis.takeProfit,
+                 analysis.recommendedAmount 
+             );
+        }
     }
-  }, [analysis, config.isActive, config.pair, config.isPro]); 
+  }, [analysis, config.isActive, config.pair, config.isPro, trades, executeTrade, marketData]); 
 
   // --- Handlers ---
 
   const performAnalysis = useCallback(async () => {
-    if (isAnalyzing || marketData.length < 50) return; // Wait for enough data for RSI
+    if (isAnalyzing || marketData.length < 50) return;
     
     setIsAnalyzing(true);
-    const result = await analyzeMarket(marketData, config.balance, config.riskLevel, config.pair);
+    // Analyze using the active balance
+    const result = await analyzeMarket(marketData, balances[accountType], config.riskLevel, config.pair);
     setAnalysis(result);
     setIsAnalyzing(false);
-  }, [marketData, config.balance, config.riskLevel, config.pair, isAnalyzing]);
+  }, [marketData, balances, accountType, config.riskLevel, config.pair, isAnalyzing]);
 
   useEffect(() => {
     if (config.isActive && isAuthenticated) {
@@ -274,371 +356,331 @@ const App: React.FC = () => {
     }
     return () => {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
-    };
-  }, [config.isActive, isAuthenticated, config.pair, config.isPro]);
+    }
+  }, [config.isActive, isAuthenticated, performAnalysis, config.isPro]);
 
   const initiateManualTrade = (type: TradeType) => {
-    const currentPrice = marketData[marketData.length - 1]?.price || 0;
-    setPendingTrade({ type, price: currentPrice });
+    const price = marketData[marketData.length - 1]?.price || 0;
+    setPendingTrade({ type, price });
   };
 
   const confirmTrade = () => {
     if (pendingTrade) {
-      const executionPrice = getPrice(config.pair);
-      executeTrade(pendingTrade.type, executionPrice);
+      // Re-fetch latest price to simulate market order (avoid slippage in simulation)
+      const latestPrice = marketData[marketData.length - 1]?.price || pendingTrade.price;
+      
+      // Calculate SL/TP based on Risk Level (Auto-fill for manual)
+      const riskPct = 0.01; 
+      const slDist = latestPrice * riskPct; 
+      
+      const sl = pendingTrade.type === TradeType.BUY ? latestPrice - slDist : latestPrice + slDist;
+      const tp = pendingTrade.type === TradeType.BUY ? latestPrice + (slDist * 2) : latestPrice - (slDist * 2);
+
+      // Manual trade uses 5% of balance as default amount if not specified
+      const currentBalance = balances[accountType];
+      const manualAmount = (currentBalance * 0.05) / latestPrice;
+
+      executeTrade(pendingTrade.type, latestPrice, sl, tp, manualAmount);
       setPendingTrade(null);
     }
   };
 
-  const executeTrade = (type: TradeType, price: number, sl?: number, tp?: number) => {
-    let riskPct = 0.02; // Low
-    if (config.riskLevel === 'MEDIUM') riskPct = 0.05;
-    if (config.riskLevel === 'HIGH') riskPct = 0.10;
-
-    const tradeValue = config.balance * riskPct;
-    const amount = parseFloat((tradeValue / price).toFixed(6));
-
-    if (amount <= 0) return;
-
-    if (config.balance < tradeValue) {
-        setNotification({ message: 'Insufficient balance for trade margin', type: 'error' });
-        return;
-    }
-
-    const stopLoss = sl || (type === TradeType.BUY ? price * 0.98 : price * 1.02);
-    const takeProfit = tp || (type === TradeType.BUY ? price * 1.05 : price * 0.95);
-
-    const newTrade: Trade = {
-      id: Math.random().toString(36).substr(2, 9),
-      symbol: config.pair,
-      type,
-      price,
-      amount,
-      timestamp: new Date(),
-      status: 'OPEN',
-      stopLoss,
-      takeProfit,
-      highestPrice: price, // Initialize for trailing
-      lowestPrice: price   // Initialize for trailing
-    };
-
-    setTrades(prev => [newTrade, ...prev]);
-    setConfig(prev => ({ ...prev, balance: prev.balance - tradeValue }));
+  const handleBrokerConnect = (broker: string, isLive: boolean) => {
+    const type = isLive ? 'LIVE' : 'DEMO';
+    setAccountType(type);
     
-    if (type === TradeType.BUY) {
-        setCurrentHoldings(prev => prev + amount); 
+    // Update balance simulation logic
+    if (isLive) {
+        // EXACT simulation of the user's broker balance as requested
+        const fetchedLiveBalance = 35500.00; 
+        setBalances(prev => ({ ...prev, LIVE: fetchedLiveBalance }));
+        setConfig(prev => ({ ...prev, broker, balance: fetchedLiveBalance }));
     } else {
-        setCurrentHoldings(prev => prev - amount); 
+        // Reset Demo to 10k or keep existing
+        setBalances(prev => ({ ...prev, DEMO: 10000 }));
+        setConfig(prev => ({ ...prev, broker, balance: 10000 }));
     }
-  };
 
-  const toggleBot = () => {
-    setConfig(prev => ({ ...prev, isActive: !prev.isActive }));
-  };
-
-  const handleProUpgrade = (details: { ref: string; apiKey?: string; method: 'local' | 'foreign' }) => {
-    setConfig(prev => ({
-      ...prev,
-      paymentStatus: 'PENDING'
-    }));
-    
-    const hasKey = !!details.apiKey && details.apiKey.length > 5;
-    setIsApiVerification(hasKey);
-    setPaymentMethod(details.method);
-
-    const bankName = details.method === 'local' ? 'Kuda Bank' : 'Grey';
-
-    setNotification({
-      message: hasKey 
-        ? `Connecting to ${bankName} API with Key... Verifying...`
-        : `Transaction submitted. Verifying with ${bankName}...`,
-      type: 'pending'
+    setNotification({ 
+        message: `Connected to ${broker} (${type}). Balance Synced.`, 
+        type: 'success' 
     });
   };
 
-  // --- Render ---
+  const handleProUpgrade = (details: { ref: string, apiKey?: string, method: 'local' | 'foreign' | 'crypto' }) => {
+    setIsApiVerification(!!details.apiKey);
+    setPaymentMethod(details.method);
+    setConfig(prev => ({ ...prev, paymentStatus: 'PENDING' }));
+    
+    setNotification({ 
+        message: details.apiKey 
+          ? 'Connecting to Bank API for instant verification...' 
+          : 'Submitting Payment Reference for verification...', 
+        type: 'pending' 
+    });
+  };
 
   if (!isAuthenticated) {
     return <AuthPage onLogin={() => setIsAuthenticated(true)} />;
   }
 
-  const currentPrice = marketData[marketData.length - 1]?.price || 0;
-  const priceChange = marketData.length > 2 
-    ? currentPrice - marketData[marketData.length - 2].price 
-    : 0;
+  const pairDetails = getPairDetails(config.pair);
 
   return (
-    <div className="min-h-screen bg-background text-gray-200 font-sans pb-12 relative">
-      
+    <div className="min-h-screen bg-background text-gray-100 font-sans flex flex-col md:flex-row">
+      {/* Toast Notification */}
       {notification && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[70] px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 animate-fade-in border ${
-          notification.type === 'success' ? 'bg-green-900/90 border-green-500 text-white' : 
-          notification.type === 'pending' ? 'bg-blue-900/90 border-blue-500 text-white' : 
-          'bg-red-900/90 border-red-500 text-white'
+        <div className={`fixed top-4 right-4 z-[70] px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 animate-fade-in ${
+            notification.type === 'success' ? 'bg-surface border-success/30 text-success' : 
+            notification.type === 'error' ? 'bg-surface border-danger/30 text-danger' :
+            'bg-surface border-yellow-500/30 text-yellow-500'
         }`}>
-          {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
-          {notification.type === 'pending' && <Loader2 className="w-5 h-5 animate-spin" />}
-          {notification.type === 'error' && <AlertTriangle className="w-5 h-5" />}
-          <span className="font-medium text-sm">{notification.message}</span>
+            {notification.type === 'pending' ? <Loader2 className="w-5 h-5 animate-spin" /> : 
+             notification.type === 'success' ? <CheckCircle className="w-5 h-5" /> :
+             <AlertTriangle className="w-5 h-5" />
+            }
+            <span className="font-medium">{notification.message}</span>
+        </div>
+      )}
+
+      {/* Mobile Navbar */}
+      <div className="md:hidden bg-surface border-b border-gray-700 p-4 flex justify-between items-center sticky top-0 z-40">
+        <div className="flex items-center gap-2">
+           <Bot className="w-6 h-6 text-primary" />
+           <span className="font-bold text-white">NexusTrade</span>
+        </div>
+        <button onClick={() => setIsSettingsModalOpen(true)} className="text-gray-400"><Settings className="w-6 h-6" /></button>
+      </div>
+
+      {/* Sidebar (Desktop) / Navigation */}
+      <nav className="hidden md:flex flex-col w-64 bg-surface border-r border-gray-700 p-4 space-y-6">
+        <div className="flex items-center gap-2 px-2">
+          <div className="p-2 bg-primary/20 rounded-lg">
+            <Bot className="w-6 h-6 text-primary" />
+          </div>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">NexusTrade</h1>
+        </div>
+
+        <div className="space-y-1">
+          <p className="px-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Account</p>
+          <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700 mb-4 relative overflow-hidden">
+             {accountType === 'LIVE' && <div className="absolute top-0 right-0 p-1 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-bl-lg">LIVE</div>}
+             {accountType === 'DEMO' && <div className="absolute top-0 right-0 p-1 bg-gray-600/20 text-gray-400 text-[10px] font-bold rounded-bl-lg">DEMO</div>}
+             
+             <div className="flex justify-between items-center mb-1">
+                <span className="text-gray-400 text-xs">Available Balance</span>
+                {config.isPro && <Crown className="w-3 h-3 text-yellow-500" />}
+             </div>
+             <div className="text-2xl font-mono font-bold text-white">${config.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+             <div className="flex justify-between items-center mt-2">
+                 <span className="text-xs text-gray-500">PnL (Today)</span>
+                 <span className="text-xs text-success font-medium">+2.4%</span>
+             </div>
+          </div>
+          
+          <button 
+            onClick={() => setIsSettingsModalOpen(true)}
+            className={`w-full py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm font-bold transition-all ${
+                config.isPro 
+                ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' 
+                : 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-black hover:shadow-lg hover:shadow-yellow-900/20'
+            }`}
+          >
+             {config.isPro ? (
+                 <><CheckCircle className="w-4 h-4" /> Pro Active</>
+             ) : (
+                 <><Crown className="w-4 h-4" /> Upgrade to Pro</>
+             )}
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-2">
+           <p className="px-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Market Watch</p>
+           {/* Simple Watchlist */}
+           {[config.pair, 'XAU/USD', 'BTC/USD'].map(p => (
+               <div key={p} onClick={() => setConfig(prev => ({...prev, pair: p}))} className={`p-2 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-800 ${config.pair === p ? 'bg-gray-800 border border-gray-600' : ''}`}>
+                   <span className="text-sm font-medium">{p}</span>
+                   <span className="text-xs text-gray-400">{getPrice(p).toFixed(2)}</span>
+               </div>
+           ))}
+           <div className="mt-4 p-2">
+                <label className="text-xs text-gray-500 block mb-1">Select Pair</label>
+                <div className="relative">
+                    <select 
+                        value={config.pair}
+                        onChange={(e) => setConfig(prev => ({ ...prev, pair: e.target.value }))}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-2 pr-8 text-sm appearance-none outline-none focus:border-primary"
+                    >
+                        {AVAILABLE_PAIRS.map(pair => (
+                            <option key={pair} value={pair}>{pair}</option>
+                        ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2.5 w-4 h-4 text-gray-500 pointer-events-none" />
+                </div>
+           </div>
+        </div>
+
+        <div className="mt-auto space-y-3">
+             <button 
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="w-full p-3 rounded-xl border border-gray-700 bg-surface hover:bg-gray-800 text-gray-400 hover:text-white transition-all flex items-center justify-start gap-3"
+             >
+                <Settings className="w-5 h-5" />
+                <span className="text-sm font-medium">Settings</span>
+             </button>
+
+             <button 
+                onClick={() => setIsBrokerModalOpen(true)}
+                className={`w-full p-3 rounded-xl border flex items-center justify-between text-sm transition-colors ${
+                    config.broker 
+                    ? 'bg-green-500/10 border-green-500/30 text-green-400' 
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                }`}
+             >
+                <div className="flex items-center gap-2">
+                    <Link2 className="w-4 h-4" />
+                    <span>{config.broker ? config.broker : 'Connect Broker'}</span>
+                </div>
+                {config.broker && <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>}
+             </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto space-y-6">
+        {/* Header Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatsCard label="24h Volume" value="$1.2M" trend="12%" trendUp icon={Activity} />
+          <StatsCard label="Win Rate" value={analysis ? `${analysis.confidence}%` : '-'} icon={Shield} color="text-success" />
+          <StatsCard label="Active Trades" value={trades.filter(t => t.status === 'OPEN').length.toString()} icon={Wallet} color="text-warning" />
+          <StatsCard label="Risk Mode" value={config.riskLevel} icon={AlertTriangle} color={config.riskLevel === 'HIGH' ? 'text-danger' : 'text-primary'} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Chart & Manual Trade */}
+          <div className="lg:col-span-2 space-y-6">
+            <ChartPanel data={marketData} pair={config.pair} trades={trades} />
+            
+            {/* Manual Execution */}
+            <div className="bg-surface p-4 rounded-xl border border-gray-700 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                    <button 
+                        onClick={() => initiateManualTrade(TradeType.BUY)}
+                        className="flex-1 md:flex-none px-8 py-3 bg-success hover:bg-green-600 text-white font-bold rounded-lg transition-colors shadow-lg shadow-green-900/20"
+                    >
+                        BUY MARKET
+                    </button>
+                    <div className="flex flex-col items-center">
+                        <span className="text-xs text-gray-500 uppercase">Spread</span>
+                        <span className="text-sm font-mono text-white">0.2</span>
+                    </div>
+                    <button 
+                        onClick={() => initiateManualTrade(TradeType.SELL)}
+                        className="flex-1 md:flex-none px-8 py-3 bg-danger hover:bg-red-600 text-white font-bold rounded-lg transition-colors shadow-lg shadow-red-900/20"
+                    >
+                        SELL MARKET
+                    </button>
+                </div>
+                
+                {/* Risk Settings */}
+                <div className="flex items-center gap-2 bg-gray-900/50 p-1.5 rounded-lg border border-gray-700">
+                    <button 
+                        onClick={() => setConfig(c => ({...c, riskLevel: 'LOW'}))}
+                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${config.riskLevel === 'LOW' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        LOW
+                    </button>
+                    <button 
+                        onClick={() => setConfig(c => ({...c, riskLevel: 'MEDIUM'}))}
+                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all ${config.riskLevel === 'MEDIUM' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        MID
+                    </button>
+                    <button 
+                        onClick={() => {
+                            if (config.isPro) setConfig(c => ({...c, riskLevel: 'HIGH'}));
+                            else setNotification({ message: "High Risk Mode is locked for Pro Users", type: 'error' });
+                        }}
+                        className={`px-3 py-1.5 rounded text-xs font-bold transition-all flex items-center gap-1 ${
+                            config.riskLevel === 'HIGH' ? 'bg-red-500 text-white' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                    >
+                        HIGH {!config.isPro && <Lock className="w-3 h-3" />}
+                    </button>
+                </div>
+            </div>
+          </div>
+
+          {/* Right Column: AI & History */}
+          <div className="space-y-6">
+            <BotStatusPanel 
+              analysis={analysis} 
+              config={config} 
+              onToggleActive={() => setConfig(prev => ({ ...prev, isActive: !prev.isActive }))}
+              isAnalyzing={isAnalyzing}
+            />
+            <TradeHistory trades={trades} />
+          </div>
+        </div>
+      </main>
+
+      {/* Confirmation Modal */}
+      {pendingTrade && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-xl shadow-2xl p-6 relative">
+                <h3 className="text-xl font-bold text-white mb-4">Confirm Execution</h3>
+                <div className="space-y-4 mb-6">
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Type</span>
+                        <span className={`font-bold ${pendingTrade.type === TradeType.BUY ? 'text-success' : 'text-danger'}`}>{pendingTrade.type}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Pair</span>
+                        <span className="text-white font-mono">{config.pair}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Est. Price</span>
+                        <span className="text-white font-mono">{pendingTrade.price.toFixed(pairDetails.decimals)}</span>
+                    </div>
+                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                        <p className="text-xs text-yellow-500 text-center">
+                            Risking approx. {config.riskLevel === 'LOW' ? '1%' : config.riskLevel === 'MEDIUM' ? '5%' : '10%'} of balance.
+                        </p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <button 
+                        onClick={() => setPendingTrade(null)}
+                        className="py-2.5 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-800 font-medium"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={confirmTrade}
+                        className="py-2.5 rounded-lg bg-primary hover:bg-blue-600 text-white font-bold shadow-lg shadow-blue-900/20"
+                    >
+                        Confirm Trade
+                    </button>
+                </div>
+            </div>
         </div>
       )}
 
       <BrokerModal 
         isOpen={isBrokerModalOpen} 
         onClose={() => setIsBrokerModalOpen(false)}
-        onConnect={(broker) => setConfig(prev => ({ ...prev, broker }))}
+        onConnect={handleBrokerConnect}
       />
       
-      <UpgradeModal
-        isOpen={isUpgradeModalOpen}
-        onClose={() => setIsUpgradeModalOpen(false)}
-        onUpgrade={handleProUpgrade}
-      />
-
-      <AIChat 
-        marketContext={`Pair: ${config.pair}, Price: ${currentPrice}, Trend: ${priceChange > 0 ? 'Up' : 'Down'}, Active Trades: ${trades.filter(t => t.status === 'OPEN').length}`} 
+      <SettingsModal 
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
         config={config}
+        onUpgrade={handleProUpgrade}
+        balances={balances}
       />
 
-      {pendingTrade && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-xl shadow-2xl p-6 transform transition-all scale-100">
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`p-3 rounded-full ${pendingTrade.type === TradeType.BUY ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`}>
-                <Activity className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Confirm Order</h3>
-                <p className="text-xs text-gray-400">Manual Execution • {config.pair}</p>
-              </div>
-            </div>
-            
-            <p className="text-gray-300 text-sm mb-6 leading-relaxed">
-              Are you sure you want to open a <span className={`font-bold ${pendingTrade.type === TradeType.BUY ? 'text-success' : 'text-danger'}`}>{pendingTrade.type}</span> position at approximately <span className="text-white font-mono">${pendingTrade.price.toLocaleString()}</span>?
-            </p>
-            
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setPendingTrade(null)}
-                className="flex-1 py-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium transition-colors border border-gray-700"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmTrade}
-                className={`flex-1 py-2.5 rounded-lg text-white font-bold shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                  pendingTrade.type === TradeType.BUY 
-                    ? 'bg-success hover:bg-green-600 shadow-green-900/20' 
-                    : 'bg-danger hover:bg-red-600 shadow-red-900/20'
-                }`}
-              >
-                Confirm {pendingTrade.type}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Navbar */}
-      <nav className="border-b border-gray-800 bg-surface/50 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="bg-gradient-to-br from-primary to-accent p-2 rounded-lg shadow-lg shadow-primary/20 shrink-0">
-                <Bot className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-lg sm:text-xl font-bold tracking-tight text-white hidden sm:block">NexusTrade AI</span>
-              <span className="text-lg font-bold tracking-tight text-white block sm:hidden">Nexus</span>
-              {config.isPro && <span className="px-2 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 text-xs font-bold ml-1">PRO</span>}
-            </div>
-            
-            <div className="flex items-center gap-3 sm:gap-6">
-              
-              {!config.isPro && config.paymentStatus !== 'PENDING' && (
-                  <button 
-                    onClick={() => setIsUpgradeModalOpen(true)}
-                    className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-black px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-lg shadow-yellow-900/20 animate-pulse"
-                  >
-                    <Crown className="w-3 h-3" /> UPGRADE
-                  </button>
-              )}
-              
-              {config.paymentStatus === 'PENDING' && (
-                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold">
-                    <Loader2 className="w-3 h-3 animate-spin" /> {isApiVerification ? 'API CHECK' : 'VERIFYING'}
-                  </div>
-              )}
-
-              {/* Pair Selector */}
-              <div className="relative group">
-                <button className="flex items-center gap-2 bg-gray-800/80 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium text-white transition-colors">
-                  {config.pair} <ChevronDown className="w-4 h-4 text-gray-400" />
-                </button>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-0 mt-2 w-48 bg-surface border border-gray-700 rounded-lg shadow-xl overflow-y-auto max-h-64 hidden group-hover:block z-50">
-                  {AVAILABLE_PAIRS.map(pair => (
-                    <button 
-                      key={pair}
-                      onClick={() => setConfig(prev => ({ ...prev, pair }))}
-                      className={`w-full text-left px-4 py-3 text-sm border-b border-gray-700/50 hover:bg-gray-800 ${config.pair === pair ? 'text-primary font-bold bg-primary/10' : 'text-gray-300'}`}
-                    >
-                      {pair}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="h-6 w-px bg-gray-700"></div>
-
-              <button 
-                onClick={() => setIsBrokerModalOpen(true)}
-                className={`flex items-center gap-2 text-xs font-medium px-2 sm:px-3 py-1.5 rounded-full border transition-all ${config.broker ? 'bg-success/10 border-success/30 text-success' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-              >
-                {config.broker ? (
-                   <><Link2 className="w-3 h-3" /> <span className="hidden sm:inline">Connected</span></>
-                ) : (
-                   <><Power className="w-3 h-3" /> <span className="hidden sm:inline">Connect</span></>
-                )}
-              </button>
-              
-              <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm font-medium text-white">
-                <Wallet className="w-4 h-4 text-gray-400" />
-                <span>${(config.balance / 1000).toFixed(1)}k</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8">
-        
-        {!process.env.API_KEY && (
-           <div className="bg-yellow-900/20 border border-yellow-700/50 text-yellow-200 p-4 rounded-xl mb-8 flex items-center gap-3 animate-fade-in">
-             <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-             <p className="text-sm">Running in Simulation Mode. Add API Key for real-time Gemini intelligence.</p>
-           </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatsCard 
-            label={`Live Price`} 
-            value={`$${currentPrice.toLocaleString()}`} 
-            trend={`${Math.abs(priceChange).toFixed(4)}`}
-            trendUp={priceChange >= 0}
-            icon={Activity}
-            color="text-primary"
-          />
-          <StatsCard 
-            label="Total Equity" 
-            value={`$${config.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-            trend="1.2%"
-            trendUp={true}
-            icon={Wallet}
-            color="text-success"
-          />
-          <StatsCard 
-            label="Net Exposure" 
-            value={`${currentHoldings.toFixed(4)}`} 
-            icon={Shield}
-            color="text-accent"
-          />
-           <StatsCard 
-            label="Risk Config" 
-            value={config.riskLevel} 
-            icon={Settings}
-            color="text-warning"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          <div className="lg:col-span-2 space-y-8 min-w-0">
-            <ChartPanel data={marketData} pair={config.pair} trades={trades} />
-            <TradeHistory trades={trades} />
-          </div>
-
-          <div className="space-y-8 min-w-0">
-            <BotStatusPanel 
-              analysis={analysis} 
-              config={config} 
-              onToggleActive={toggleBot}
-              isAnalyzing={isAnalyzing}
-            />
-            
-            <div className="bg-surface p-6 rounded-xl border border-gray-700">
-                <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                   <Activity className="w-5 h-5 text-primary" /> Manual Execution
-                </h3>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <button 
-                    onClick={() => initiateManualTrade(TradeType.BUY)}
-                    className="py-3 bg-success hover:bg-green-600 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    BUY MARKET
-                  </button>
-                  <button 
-                    onClick={() => initiateManualTrade(TradeType.SELL)}
-                    className="py-3 bg-danger hover:bg-red-600 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    SELL MARKET
-                  </button>
-                </div>
-
-                <div className="h-px bg-gray-700/50 mb-6"></div>
-
-                <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                   <Settings className="w-5 h-5 text-warning" /> Risk Management
-                </h3>
-                
-                <div className="grid grid-cols-3 gap-2 bg-gray-900/50 p-1 rounded-lg border border-gray-700">
-                  {['LOW', 'MEDIUM', 'HIGH'].map((level) => {
-                    const isHigh = level === 'HIGH';
-                    const isLocked = isHigh && !config.isPro;
-                    
-                    return (
-                      <button
-                        key={level}
-                        onClick={() => {
-                          if (isLocked) {
-                            if (config.paymentStatus === 'PENDING') {
-                                setNotification({ message: 'Pro Verification in progress...', type: 'pending'});
-                            } else {
-                                setIsUpgradeModalOpen(true);
-                            }
-                            return;
-                          }
-                          setConfig(c => ({ ...c, riskLevel: level as any }));
-                        }}
-                        className={`py-2 text-xs font-bold rounded relative overflow-hidden transition-all ${
-                          config.riskLevel === level 
-                            ? 'bg-gray-700 text-white shadow' 
-                            : 'text-gray-500 hover:text-gray-300'
-                        } ${isLocked ? 'cursor-not-allowed opacity-70' : ''}`}
-                      >
-                        {level}
-                        {isLocked && (
-                          <div className="absolute top-1 right-1">
-                            <Lock className="w-3 h-3 text-yellow-500" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                {!config.isPro && (
-                  <p className="text-[10px] text-gray-500 mt-2 text-center">
-                    {config.paymentStatus === 'PENDING' ? (
-                       <span className="text-blue-400">Verifying payment for Pro Access...</span>
-                    ) : (
-                       <span className="text-yellow-500">PRO TIP: Upgrade to unlock High Risk strategies.</span>
-                    )}
-                  </p>
-                )}
-            </div>
-          </div>
-        </div>
-      </main>
+      <AIChat marketContext={JSON.stringify(analysis)} config={config} />
     </div>
   );
 };

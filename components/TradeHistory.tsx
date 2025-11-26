@@ -41,6 +41,15 @@ export const TradeHistory: React.FC<TradeHistoryProps> = ({ trades }) => {
                   const details = getPairDetails(trade.symbol);
                   const formatPrice = (p: number) => p.toFixed(details.decimals);
                   
+                  // Safe PnL Calculation fallback
+                  let displayProfit = trade.profit;
+                  if (displayProfit === undefined && trade.status === 'CLOSED' && trade.closePrice) {
+                     const diff = trade.type === TradeType.BUY 
+                        ? trade.closePrice - trade.price 
+                        : trade.price - trade.closePrice;
+                     displayProfit = diff * trade.amount;
+                  }
+
                   return (
                     <tr key={trade.id} className="border-b border-gray-700/50 hover:bg-gray-800/30 transition-colors">
                         <td className="px-4 py-3">
@@ -61,12 +70,16 @@ export const TradeHistory: React.FC<TradeHistoryProps> = ({ trades }) => {
                         </td>
                         <td className="px-4 py-3 text-gray-400">{trade.amount} {asset}</td>
                         <td className="px-4 py-3 font-mono">
-                          {trade.profit !== undefined ? (
-                            <span className={trade.profit >= 0 ? 'text-success' : 'text-danger'}>
-                              {trade.profit >= 0 ? '+' : ''}{trade.profit.toFixed(2)}
+                          {displayProfit !== undefined ? (
+                            <span className={displayProfit >= 0 ? 'text-success' : 'text-danger'}>
+                              {displayProfit >= 0 ? '+' : ''}{displayProfit.toFixed(2)}
                             </span>
                           ) : (
-                            <span className="text-gray-600">-</span>
+                             trade.status === 'OPEN' ? (
+                                <span className="text-gray-500 text-xs italic">Running</span>
+                             ) : (
+                                <span className="text-gray-600">-</span>
+                             )
                           )}
                         </td>
                         <td className="px-4 py-3">

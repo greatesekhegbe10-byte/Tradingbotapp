@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnalysisResult, TradeType, BotConfig } from '../types';
-import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown, Copy, Check, Share2 } from 'lucide-react';
+import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown, Copy, Check, Share2, BarChart2 } from 'lucide-react';
 import { getPairDetails } from '../services/marketService';
 
 interface BotStatusPanelProps {
@@ -29,15 +29,26 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
   const handleCopySignal = () => {
     if (!analysis) return;
     
+    // Exact Copy-Paste Format Requested
     const signalText = `
-🎯 NEXUS AI SIGNAL 🎯
-Asset: ${config.pair}
-Signal: ${analysis.recommendation} ${analysis.recommendation === 'BUY' ? '🟢' : analysis.recommendation === 'SELL' ? '🔴' : '⚪️'}
+🔥 TRADING SIGNAL - NEXUS AI 🔥
+
+📈 Pair: ${config.pair}
+🚀 Direction: ${analysis.recommendation}
+💯 Confidence: ${analysis.confidence}%
+
+📊 Market Overview:
+Structure: ${analysis.marketStructure || 'Trending'}
+Pattern: ${analysis.patterns?.join(', ') || 'Price Action'}
+
+🎯 TRADE SETUP:
 Entry: Market Price
-TP: ${formatPrice(analysis.takeProfit)}
-SL: ${formatPrice(analysis.stopLoss)}
-Confidence: ${analysis.confidence}%
-Reasoning: ${analysis.reasoning}
+⛔ SL: ${formatPrice(analysis.stopLoss)}
+✅ TP: ${formatPrice(analysis.takeProfit)}
+
+🧠 AI Bias: ${analysis.reasoning}
+
+⚠️ Risk: ${config.riskLevel}
     `.trim();
 
     navigator.clipboard.writeText(signalText);
@@ -58,7 +69,7 @@ Reasoning: ${analysis.reasoning}
       <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
           <Brain className={`w-5 h-5 ${config.isPro ? 'text-yellow-400' : 'text-purple-400'}`} />
-          <h2 className="text-lg font-semibold text-white">Gemini Core {config.isPro && <span className="text-xs text-yellow-400 ml-1 font-bold">PRO</span>}</h2>
+          <h2 className="text-lg font-semibold text-white">Forex Engine {config.isPro && <span className="text-xs text-yellow-400 ml-1 font-bold">PRO</span>}</h2>
         </div>
         <button
           onClick={onToggleActive}
@@ -74,7 +85,7 @@ Reasoning: ${analysis.reasoning}
             </>
           ) : (
             <>
-              <Play className="w-3 h-3 fill-current" /> ACTIVATE AUTO
+              <Play className="w-3 h-3 fill-current" /> AUTO TRADE
             </>
           )}
         </button>
@@ -85,14 +96,14 @@ Reasoning: ${analysis.reasoning}
         
         {/* Status Indicator */}
         <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm font-medium">System Status</span>
+            <span className="text-gray-400 text-sm font-medium">Engine Status</span>
             <div className="flex items-center gap-2">
                 {isAnalyzing ? (
                     <span className="text-warning text-xs flex items-center gap-1 animate-pulse font-bold">
-                        <Activity className="w-3 h-3" /> ANALYZING MARKET...
+                        <Activity className="w-3 h-3" /> CALCULATING PATTERNS...
                     </span>
                 ) : (
-                    <span className="text-gray-500 text-xs font-mono">WAITING FOR TICK</span>
+                    <span className="text-gray-500 text-xs font-mono">SCANNING STRUCTURE</span>
                 )}
                 <div className={`w-2.5 h-2.5 rounded-full ${config.isActive ? 'bg-success animate-ping' : 'bg-gray-600'}`}></div>
             </div>
@@ -106,9 +117,10 @@ Reasoning: ${analysis.reasoning}
               {/* Copy Button */}
               <button 
                 onClick={handleCopySignal}
-                className="absolute top-3 right-3 p-2 rounded-lg bg-black/20 hover:bg-black/40 transition-colors text-current"
+                className="absolute top-3 right-3 p-2 rounded-lg bg-black/20 hover:bg-black/40 transition-colors text-current flex items-center gap-2"
                 title="Copy Signal Strategy"
               >
+                <span className="text-[10px] font-bold uppercase hidden sm:block">Copy Signal</span>
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
 
@@ -118,6 +130,24 @@ Reasoning: ${analysis.reasoning}
                 <Zap className="w-4 h-4" />
                 <span>Confidence: {analysis.confidence}%</span>
               </div>
+            </div>
+
+            {/* Pattern & Structure Info */}
+            <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-900/50 p-2.5 rounded-lg border border-gray-700 flex flex-col">
+                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                        <BarChart2 className="w-3 h-3" /> Structure
+                    </span>
+                    <span className="text-sm font-mono text-white mt-1">{analysis.marketStructure || 'Analyzing...'}</span>
+                </div>
+                <div className="bg-gray-900/50 p-2.5 rounded-lg border border-gray-700 flex flex-col">
+                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                        <Activity className="w-3 h-3" /> Patterns
+                    </span>
+                    <span className="text-sm font-mono text-white mt-1 truncate">
+                        {analysis.patterns && analysis.patterns.length > 0 ? analysis.patterns.join(', ') : 'None'}
+                    </span>
+                </div>
             </div>
 
             {/* Reasoning */}
@@ -155,7 +185,7 @@ Reasoning: ${analysis.reasoning}
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2 min-h-[200px]">
             <Brain className="w-12 h-12 opacity-20 animate-pulse" />
-            <p className="text-sm">Gathering market data for analysis...</p>
+            <p className="text-sm">Engine Initializing...</p>
           </div>
         )}
       </div>

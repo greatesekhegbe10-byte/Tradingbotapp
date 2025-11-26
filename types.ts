@@ -36,6 +36,10 @@ export interface AnalysisResult {
   stopLoss: number;
   takeProfit: number;
   timestamp: Date;
+  recommendedAmount?: number; // AI suggested position size based on balance
+  // New Fields for Forex Engine
+  patterns?: string[];
+  marketStructure?: string;
 }
 
 export interface BotConfig {
