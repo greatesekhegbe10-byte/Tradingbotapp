@@ -9,6 +9,7 @@ import { AuthPage } from './components/AuthPage';
 import { BrokerModal } from './components/BrokerModal';
 import { SettingsModal } from './components/SettingsModal';
 import { AIChat } from './components/AIChat';
+import { SubscriptionGate } from './components/SubscriptionGate';
 import { MarketDataPoint, Trade, TradeType, AnalysisResult, BotConfig } from './types';
 import { generateMarketData, generateInitialHistory, getPrice, getPairDetails } from './services/marketService';
 import { analyzeMarket } from './services/geminiService';
@@ -27,6 +28,7 @@ const AVAILABLE_PAIRS = [
 const App: React.FC = () => {
   // --- Auth State ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false); // Subscription Gate State
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
@@ -115,7 +117,7 @@ const App: React.FC = () => {
 
   // 2. Real-time Market Ticker
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !isSubscribed) return; // Only tick if inside app
     const interval = setInterval(() => {
       setMarketData(prev => {
         const newData = generateMarketData(config.pair);
@@ -125,7 +127,7 @@ const App: React.FC = () => {
       });
     }, 1500);
     return () => clearInterval(interval);
-  }, [isAuthenticated, config.pair]);
+  }, [isAuthenticated, isSubscribed, config.pair]);
 
   // 3. Trade Monitoring (Trailing SL & TP)
   useEffect(() => {
@@ -347,7 +349,7 @@ const App: React.FC = () => {
   }, [marketData, balances, accountType, config.riskLevel, config.pair, isAnalyzing]);
 
   useEffect(() => {
-    if (config.isActive && isAuthenticated) {
+    if (config.isActive && isAuthenticated && isSubscribed) {
       performAnalysis();
       const intervalMs = config.isPro ? 5000 : 10000;
       analysisIntervalRef.current = setInterval(performAnalysis, intervalMs);
@@ -357,7 +359,7 @@ const App: React.FC = () => {
     return () => {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
     }
-  }, [config.isActive, isAuthenticated, performAnalysis, config.isPro]);
+  }, [config.isActive, isAuthenticated, isSubscribed, performAnalysis, config.isPro]);
 
   const initiateManualTrade = (type: TradeType) => {
     const price = marketData[marketData.length - 1]?.price || 0;
@@ -420,10 +422,20 @@ const App: React.FC = () => {
     });
   };
 
+  // 1. Auth Gate
   if (!isAuthenticated) {
     return <AuthPage onLogin={() => setIsAuthenticated(true)} />;
   }
 
+  // 2. Subscription Gate
+  if (!isSubscribed) {
+    return <SubscriptionGate onVerify={() => {
+        setIsSubscribed(true);
+        setNotification({ message: "Subscription Verified. Welcome to NexusTrade.", type: 'success' });
+    }} />;
+  }
+
+  // 3. Main App
   const pairDetails = getPairDetails(config.pair);
 
   return (
