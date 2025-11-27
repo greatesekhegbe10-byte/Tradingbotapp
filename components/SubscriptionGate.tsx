@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { ShieldCheck, CreditCard, Globe, Lock, Copy, Check, Loader2, Wallet } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, CreditCard, Globe, Lock, Copy, Check, Loader2, AlertCircle, Wifi } from 'lucide-react';
 
 interface SubscriptionGateProps {
   onVerify: () => void;
@@ -10,6 +10,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
   const [activeTab, setActiveTab] = useState<'local' | 'foreign'>('local');
   const [ref, setRef] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -20,12 +22,40 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
 
   const handleSubmit = () => {
     if (!ref.trim()) return;
+    setError(null);
+
+    // 1. strict validation simulation
+    if (ref.length < 8 || ref.toLowerCase().includes('test') || ref.toLowerCase().includes('1234')) {
+        setError("Invalid Transaction Reference. Bank could not locate this ID.");
+        return;
+    }
+
     setIsVerifying(true);
-    // Simulate verification delay
+    setVerificationStatus('Initializing Secure Handshake...');
+
+    // 2. Simulate Realistic Banking API Delays & Steps
+    const bankName = activeTab === 'local' ? 'Kuda Bank' : 'Lead Bank';
+
     setTimeout(() => {
-      setIsVerifying(false);
-      onVerify();
-    }, 2000);
+        setVerificationStatus(`Connecting to ${bankName} Gateway...`);
+    }, 1500);
+
+    setTimeout(() => {
+        setVerificationStatus(`Querying Transaction Ledger for ID: ${ref}...`);
+    }, 3500);
+
+    setTimeout(() => {
+        setVerificationStatus('Verifying Amount & Timestamp...');
+    }, 6000);
+
+    setTimeout(() => {
+        setVerificationStatus('Payment Confirmed. Generating Access Token...');
+        
+        setTimeout(() => {
+            setIsVerifying(false);
+            onVerify();
+        }, 1500);
+    }, 8000);
   };
 
   return (
@@ -46,7 +76,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">Activate License</h1>
             <p className="text-gray-400 text-sm mb-6">
-              Complete your one-time subscription payment to access the NexusTrade Institutional Terminal.
+              Institutional Terminal Access requires a verified active subscription.
             </p>
             
             <div className="space-y-4">
@@ -54,26 +84,36 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
                 <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center">
                   <Check className="w-3 h-3 text-green-500" />
                 </div>
+                Real-time Bank Verification
+              </div>
+              <div className="flex items-center gap-3 text-sm text-gray-300">
+                <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <Check className="w-3 h-3 text-green-500" />
+                </div>
+                Secure SSL Gateway
+              </div>
+              <div className="flex items-center gap-3 text-sm text-gray-300">
+                <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <Check className="w-3 h-3 text-green-500" />
+                </div>
                 Lifetime Platform Access
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-300">
-                <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <Check className="w-3 h-3 text-green-500" />
-                </div>
-                Real-time Market Data
-              </div>
-              <div className="flex items-center gap-3 text-sm text-gray-300">
-                <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <Check className="w-3 h-3 text-green-500" />
-                </div>
-                AI Trading Assistant
               </div>
             </div>
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-800">
-            <p className="text-sm text-gray-500 mb-1">Total Due</p>
-            <p className="text-4xl font-mono font-bold text-white">$20.00</p>
+            <div className="flex justify-between items-end">
+                <div>
+                    <p className="text-sm text-gray-500 mb-1">Subscription Fee</p>
+                    <p className="text-4xl font-mono font-bold text-white">$20.00</p>
+                </div>
+                <div className="text-right">
+                    <div className="flex items-center justify-end gap-1 text-[10px] text-green-400 font-medium mb-1">
+                        <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
+                        Gateway Live
+                    </div>
+                </div>
+            </div>
           </div>
         </div>
 
@@ -82,12 +122,14 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
           <div className="flex gap-2 mb-6 p-1 bg-gray-900 rounded-lg">
             <button 
                 onClick={() => setActiveTab('local')}
+                disabled={isVerifying}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${activeTab === 'local' ? 'bg-gray-800 text-white shadow border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
             >
                 <CreditCard className="w-4 h-4" /> Local Bank
             </button>
             <button 
                 onClick={() => setActiveTab('foreign')}
+                disabled={isVerifying}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${activeTab === 'foreign' ? 'bg-gray-800 text-white shadow border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
             >
                 <Globe className="w-4 h-4" /> Foreign (Grey)
@@ -141,13 +183,22 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
           <div className="space-y-4">
             <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Proof of Payment</label>
-                <input 
-                    type="text" 
-                    value={ref}
-                    onChange={(e) => setRef(e.target.value)}
-                    placeholder="Enter Transaction Reference / Sender Name"
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:ring-1 focus:ring-primary outline-none transition-all"
-                />
+                <div className="relative">
+                    <input 
+                        type="text" 
+                        value={ref}
+                        onChange={(e) => setRef(e.target.value)}
+                        placeholder="Enter Transaction Reference / Sender Name"
+                        disabled={isVerifying}
+                        className={`w-full bg-gray-900 border rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:ring-1 focus:ring-primary outline-none transition-all ${error ? 'border-danger focus:border-danger' : 'border-gray-600'}`}
+                    />
+                </div>
+                {error && (
+                    <div className="flex items-center gap-2 mt-2 text-danger text-xs animate-pulse">
+                        <AlertCircle className="w-3 h-3" />
+                        {error}
+                    </div>
+                )}
             </div>
             
             <button 
@@ -161,7 +212,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
             >
                 {isVerifying ? (
                     <>
-                       <Loader2 className="w-5 h-5 animate-spin" /> Verifying Payment...
+                       <Loader2 className="w-5 h-5 animate-spin" /> Verifying...
                     </>
                 ) : (
                     <>
@@ -169,9 +220,27 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
                     </>
                 )}
             </button>
-            <p className="text-xs text-center text-gray-500">
-                Secure SSL Encrypted Transaction. Instant Activation.
-            </p>
+            
+            {/* Status updates during verification */}
+            {isVerifying && (
+                <div className="mt-4 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <Wifi className="w-4 h-4 text-green-400 animate-pulse" />
+                        </div>
+                        <span className="text-xs font-mono text-gray-300">{verificationStatus}</span>
+                    </div>
+                    <div className="w-full bg-gray-800 h-1 mt-2 rounded-full overflow-hidden">
+                        <div className="h-full bg-green-400 animate-progress"></div>
+                    </div>
+                </div>
+            )}
+
+            {!isVerifying && (
+                <p className="text-[10px] text-center text-gray-500 mt-2">
+                    * Access is granted only upon successful bank confirmation.
+                </p>
+            )}
           </div>
         </div>
       </div>

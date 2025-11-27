@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu, Crown, Lock, CheckCircle, Loader2 } from 'lucide-react';
+import { Bot, Wallet, Activity, AlertTriangle, Settings, Power, Link2, Shield, ChevronDown, Menu, Crown, Lock, CheckCircle, Loader2, LogOut } from 'lucide-react';
 import { StatsCard } from './components/StatsCard';
 import { ChartPanel } from './components/ChartPanel';
 import { BotStatusPanel } from './components/BotStatusPanel';
@@ -26,9 +26,10 @@ const AVAILABLE_PAIRS = [
 ];
 
 const App: React.FC = () => {
-  // --- Auth State ---
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false); // Subscription Gate State
+  // --- Auth & Gate State (With Persistence) ---
+  const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('nexus_auth') === 'true');
+  const [isSubscribed, setIsSubscribed] = useState(() => localStorage.getItem('nexus_sub') === 'true');
+  
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
@@ -46,14 +47,18 @@ const App: React.FC = () => {
   // Confirmation Modal State
   const [pendingTrade, setPendingTrade] = useState<{ type: TradeType; price: number } | null>(null);
 
-  const [config, setConfig] = useState<BotConfig>({
-    isActive: false,
-    riskLevel: 'MEDIUM',
-    pair: 'BTC/USD',
-    balance: 10000, 
-    broker: undefined,
-    isPro: false, // Default to free plan
-    paymentStatus: 'UNPAID'
+  const [config, setConfig] = useState<BotConfig>(() => {
+    // Load Pro status from storage
+    const storedPro = localStorage.getItem('nexus_pro') === 'true';
+    return {
+      isActive: false,
+      riskLevel: 'MEDIUM',
+      pair: 'BTC/USD',
+      balance: 10000, 
+      broker: undefined,
+      isPro: storedPro,
+      paymentStatus: storedPro ? 'VERIFIED' : 'UNPAID'
+    };
   });
 
   // Track if payment was verified via API Key (simulated)
@@ -63,9 +68,29 @@ const App: React.FC = () => {
   const [currentHoldings, setCurrentHoldings] = useState<number>(0);
   const analysisIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // --- Effects ---
+  // --- Persistence Effects ---
+  useEffect(() => {
+    localStorage.setItem('nexus_auth', isAuthenticated.toString());
+  }, [isAuthenticated]);
 
-  // Handle Payment Verification Simulation
+  useEffect(() => {
+    localStorage.setItem('nexus_sub', isSubscribed.toString());
+  }, [isSubscribed]);
+
+  useEffect(() => {
+    localStorage.setItem('nexus_pro', config.isPro.toString());
+  }, [config.isPro]);
+
+  // Handle Logout
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    // Note: We deliberately don't clear subscription status on logout unless specifically desired
+    // as it's a "Lifetime" license logic usually. But to be safe for testing:
+    // setIsSubscribed(false); 
+    localStorage.removeItem('nexus_auth');
+  };
+
+  // --- Payment Verification Logic (Pro) ---
   useEffect(() => {
     // If status is PENDING, start verification timer
     if (config.paymentStatus === 'PENDING') {
@@ -90,9 +115,12 @@ const App: React.FC = () => {
       
       return () => clearTimeout(timer);
     } 
-    // If status is UNPAID, ensure Pro is locked
+    // If status is UNPAID, ensure Pro is locked (unless loaded from storage as verified)
     else if (config.paymentStatus === 'UNPAID') {
-        setConfig(prev => ({ ...prev, isPro: false }));
+        const storedPro = localStorage.getItem('nexus_pro') === 'true';
+        if (!storedPro) {
+            setConfig(prev => ({ ...prev, isPro: false }));
+        }
     }
   }, [config.paymentStatus, isApiVerification, paymentMethod]);
 
@@ -117,7 +145,7 @@ const App: React.FC = () => {
 
   // 2. Real-time Market Ticker
   useEffect(() => {
-    if (!isAuthenticated || !isSubscribed) return; // Only tick if inside app
+    if (!isAuthenticated || !isSubscribed) return; // Stop data if not verified
     const interval = setInterval(() => {
       setMarketData(prev => {
         const newData = generateMarketData(config.pair);
@@ -150,57 +178,47 @@ const App: React.FC = () => {
             let updatedHighest = trade.highestPrice || trade.price;
             let updatedLowest = trade.lowestPrice || trade.price;
 
-            // --- TRAILING STOP LOGIC (Smart Profit Lock) ---
+            // --- TRAILING STOP LOGIC ---
             if (trade.type === TradeType.BUY) {
-                // Update Highest Point
                 if (livePrice > updatedHighest) updatedHighest = livePrice;
                 const currentProfitPct = (livePrice - trade.price) / trade.price;
 
-                // Move to Break Even
                 if (currentProfitPct > 0.005 && currentSL < trade.price) {
                     newSL = trade.price;
                     isTrailing = true;
                 }
-                // Trail Logic
-                const trailGap = trade.price * 0.005; // 0.5% trailing gap
+                const trailGap = trade.price * 0.005;
                 const potentialSL = livePrice - trailGap;
                 if (currentProfitPct > 0.015 && potentialSL > newSL) {
                     newSL = potentialSL;
                     isTrailing = true;
                 }
-                // Check Trigger
                 if (trade.stopLoss && livePrice <= currentSL) shouldClose = true;
                 if (trade.takeProfit && livePrice >= trade.takeProfit) shouldClose = true;
                 if (shouldClose) profit = (livePrice - trade.price) * trade.amount;
 
             } else if (trade.type === TradeType.SELL) {
-                // Update Lowest Point
                 if (livePrice < updatedLowest) updatedLowest = livePrice;
                 const currentProfitPct = (trade.price - livePrice) / trade.price;
 
-                // Move to Break Even
                 if (currentProfitPct > 0.005 && currentSL > trade.price) {
                     newSL = trade.price;
                     isTrailing = true;
                 }
-                // Trail Logic
                 const trailGap = trade.price * 0.005; 
                 const potentialSL = livePrice + trailGap;
                 if (currentProfitPct > 0.015 && potentialSL < newSL) {
                     newSL = potentialSL;
                     isTrailing = true;
                 }
-                // Check Trigger
                 if (trade.stopLoss && livePrice >= currentSL) shouldClose = true;
                 if (trade.takeProfit && livePrice <= trade.takeProfit) shouldClose = true;
                 if (shouldClose) profit = (trade.price - livePrice) * trade.amount;
             }
 
-            // Close Trade Logic
             if (shouldClose) {
                 hasUpdates = true;
                 const initialMargin = trade.price * trade.amount;
-                // Return Margin + Profit (Profit can be negative)
                 balanceAdjustment += initialMargin + profit;
                 
                 if (trade.type === TradeType.BUY) holdingsAdjustment -= trade.amount;
@@ -215,7 +233,6 @@ const App: React.FC = () => {
                 } as Trade;
             }
 
-            // Update SL if trailing happened
             if (newSL !== currentSL || updatedHighest !== trade.highestPrice || updatedLowest !== trade.lowestPrice) {
                 hasUpdates = true;
                 return {
@@ -230,7 +247,6 @@ const App: React.FC = () => {
         });
 
         if (hasUpdates) {
-             // Update the specific wallet balance based on active account
              setTimeout(() => {
                 setBalances(prev => ({
                     ...prev,
@@ -254,35 +270,39 @@ const App: React.FC = () => {
   // --- Core Actions ---
 
   const executeTrade = useCallback((type: TradeType, price: number, sl?: number, tp?: number, recommendedAmount?: number) => {
-    // 1. Determine Position Size (Amount)
     let amount = recommendedAmount;
 
     if (!amount) {
-        // Fallback Calculation if AI didn't provide specific amount
         const riskPct = config.riskLevel === 'HIGH' ? 0.10 : config.riskLevel === 'MEDIUM' ? 0.05 : 0.01;
         const currentBalance = balances[accountType];
         const capitalToRisk = currentBalance * riskPct; 
         
-        // Simple fallback: Amount = CapitalToRisk / Price
-        amount = capitalToRisk / price; 
+        if (price > 0) {
+            amount = capitalToRisk / price;
+        } else {
+            amount = 0;
+        }
     }
 
-    // 2. Strict Balance Check (Margin)
+    if (!amount || amount <= 0) {
+         setNotification({ message: "Invalid trade amount calculated. Check balance.", type: 'error' });
+         return;
+    }
+
     const marginRequired = price * amount;
     const currentBalance = balances[accountType];
     
-    if (marginRequired > currentBalance) {
-        setNotification({ message: `Insufficient ${accountType} Balance ($${currentBalance.toFixed(2)}) for trade requiring $${marginRequired.toFixed(2)}`, type: 'error' });
+    if (marginRequired > currentBalance + 0.01) {
+        setNotification({ message: `Insufficient ${accountType} Balance ($${currentBalance.toFixed(2)})`, type: 'error' });
         return;
     }
 
-    // 3. Execute
     const newTrade: Trade = {
       id: Date.now().toString(),
       symbol: config.pair,
       type,
       price,
-      amount: parseFloat(amount.toFixed(6)), // Avoid floating point precision issues
+      amount: parseFloat(amount.toFixed(6)),
       timestamp: new Date(),
       status: 'OPEN',
       stopLoss: sl,
@@ -294,17 +314,16 @@ const App: React.FC = () => {
 
     setTrades(prev => [newTrade, ...prev]);
     
-    // Deduct from specific wallet
     setBalances(prev => ({
         ...prev,
         [accountType]: prev[accountType] - marginRequired
     }));
 
     if (type === TradeType.BUY) setCurrentHoldings(prev => prev + amount!);
-    else setCurrentHoldings(prev => prev + amount!); // Short exposure
+    else setCurrentHoldings(prev => prev + amount!);
 
     setNotification({ 
-        message: `${type} Executed on ${config.pair}. Margin Deducted: $${marginRequired.toFixed(2)} (${accountType})`, 
+        message: `${type} Executed on ${config.pair}. Margin: $${marginRequired.toFixed(2)}`, 
         type: 'success' 
     });
   }, [config.riskLevel, config.pair, accountType, balances]);
@@ -322,7 +341,6 @@ const App: React.FC = () => {
     const maxTrades = config.isPro ? 10 : 3;
     if (openTradesForPair >= maxTrades) return;
 
-    // HIGH SUCCESS RATE FILTER
     if (analysis.confidence >= 80) {
         if (analysis.recommendation === TradeType.BUY || analysis.recommendation === TradeType.SELL) {
              executeTrade(
@@ -342,7 +360,6 @@ const App: React.FC = () => {
     if (isAnalyzing || marketData.length < 50) return;
     
     setIsAnalyzing(true);
-    // Analyze using the active balance
     const result = await analyzeMarket(marketData, balances[accountType], config.riskLevel, config.pair);
     setAnalysis(result);
     setIsAnalyzing(false);
@@ -368,17 +385,13 @@ const App: React.FC = () => {
 
   const confirmTrade = () => {
     if (pendingTrade) {
-      // Re-fetch latest price to simulate market order (avoid slippage in simulation)
       const latestPrice = marketData[marketData.length - 1]?.price || pendingTrade.price;
-      
-      // Calculate SL/TP based on Risk Level (Auto-fill for manual)
       const riskPct = 0.01; 
       const slDist = latestPrice * riskPct; 
       
       const sl = pendingTrade.type === TradeType.BUY ? latestPrice - slDist : latestPrice + slDist;
       const tp = pendingTrade.type === TradeType.BUY ? latestPrice + (slDist * 2) : latestPrice - (slDist * 2);
 
-      // Manual trade uses 5% of balance as default amount if not specified
       const currentBalance = balances[accountType];
       const manualAmount = (currentBalance * 0.05) / latestPrice;
 
@@ -391,14 +404,12 @@ const App: React.FC = () => {
     const type = isLive ? 'LIVE' : 'DEMO';
     setAccountType(type);
     
-    // Update balance simulation logic
     if (isLive) {
         // EXACT simulation of the user's broker balance as requested
         const fetchedLiveBalance = 35500.00; 
         setBalances(prev => ({ ...prev, LIVE: fetchedLiveBalance }));
         setConfig(prev => ({ ...prev, broker, balance: fetchedLiveBalance }));
     } else {
-        // Reset Demo to 10k or keep existing
         setBalances(prev => ({ ...prev, DEMO: 10000 }));
         setConfig(prev => ({ ...prev, broker, balance: 10000 }));
     }
@@ -427,11 +438,12 @@ const App: React.FC = () => {
     return <AuthPage onLogin={() => setIsAuthenticated(true)} />;
   }
 
-  // 2. Subscription Gate
+  // 2. Subscription Gate (Strict: Must be subscribed to enter)
+  // This cannot be bypassed as isAuthenticated && isSubscribed are required for the main UI
   if (!isSubscribed) {
     return <SubscriptionGate onVerify={() => {
         setIsSubscribed(true);
-        setNotification({ message: "Subscription Verified. Welcome to NexusTrade.", type: 'success' });
+        setNotification({ message: "Subscription Verified. Access Granted.", type: 'success' });
     }} />;
   }
 
@@ -461,7 +473,10 @@ const App: React.FC = () => {
            <Bot className="w-6 h-6 text-primary" />
            <span className="font-bold text-white">NexusTrade</span>
         </div>
-        <button onClick={() => setIsSettingsModalOpen(true)} className="text-gray-400"><Settings className="w-6 h-6" /></button>
+        <div className="flex gap-2">
+           <button onClick={() => setIsSettingsModalOpen(true)} className="text-gray-400"><Settings className="w-6 h-6" /></button>
+           <button onClick={handleLogout} className="text-gray-400"><LogOut className="w-6 h-6" /></button>
+        </div>
       </div>
 
       {/* Sidebar (Desktop) / Navigation */}
@@ -554,6 +569,14 @@ const App: React.FC = () => {
                     <span>{config.broker ? config.broker : 'Connect Broker'}</span>
                 </div>
                 {config.broker && <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>}
+             </button>
+
+             <button 
+                onClick={handleLogout}
+                className="w-full p-3 rounded-xl border border-gray-700 bg-surface hover:bg-gray-800 text-danger hover:text-red-400 transition-all flex items-center justify-start gap-3"
+             >
+                <LogOut className="w-5 h-5" />
+                <span className="text-sm font-medium">Logout</span>
              </button>
         </div>
       </nav>

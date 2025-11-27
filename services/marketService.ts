@@ -1,3 +1,4 @@
+
 import { MarketDataPoint } from '../types';
 
 // Configuration for different pairs
@@ -181,7 +182,8 @@ export const generateMarketData = (pair: string = 'BTC/USD'): MarketDataPoint =>
   // Update ALL pairs to ensure background trades trigger SL/TP even if not viewing the chart
   Object.keys(PAIR_CONFIGS).forEach(key => {
     const config = PAIR_CONFIGS[key];
-    
+    if (!config) return; // Safety check
+
     // Add momentum to creating trending behavior
     const trend = (Math.random() - 0.5) * config.volatility * 0.5;
     priceMomentum[key] = (priceMomentum[key] * 0.9) + trend; // Smoothing
@@ -196,18 +198,20 @@ export const generateMarketData = (pair: string = 'BTC/USD'): MarketDataPoint =>
   });
 
   // Return data for the specifically requested pair
+  const safePair = PAIR_CONFIGS[pair] ? pair : 'BTC/USD';
   return {
     time: now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    price: currentPrices[pair],
+    price: currentPrices[safePair],
     volume: Math.floor(Math.random() * 100 + 50)
   };
 };
 
 export const generateInitialHistory = (points: number, pair: string = 'BTC/USD'): MarketDataPoint[] => {
   const history: MarketDataPoint[] = [];
-  let price = currentPrices[pair];
+  const safePair = PAIR_CONFIGS[pair] ? pair : 'BTC/USD';
+  let price = currentPrices[safePair];
   const now = new Date();
-  const config = PAIR_CONFIGS[pair] || PAIR_CONFIGS['BTC/USD'];
+  const config = PAIR_CONFIGS[safePair];
 
   // Generate backwards to ensure continuity with current price
   for (let i = 0; i < points; i++) {
