@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnalysisResult, TradeType, BotConfig } from '../types';
-import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown, Copy, Check, Share2, BarChart2 } from 'lucide-react';
+import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown, Copy, Check, Share2, BarChart2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { getPairDetails } from '../services/marketService';
 
 interface BotStatusPanelProps {
@@ -22,6 +22,15 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
     }
   };
 
+  const getPhaseIcon = (phase?: string) => {
+    switch(phase) {
+        case 'Uptrend': return <TrendingUp className="w-4 h-4 text-success" />;
+        case 'Downtrend': return <TrendingDown className="w-4 h-4 text-danger" />;
+        case 'Choppy': return <Minus className="w-4 h-4 text-yellow-500" />;
+        default: return <Activity className="w-4 h-4 text-primary" />;
+    }
+  };
+
   const formatPrice = (price: number) => {
     return price.toLocaleString(undefined, { minimumFractionDigits: pairDetails.decimals, maximumFractionDigits: pairDetails.decimals });
   };
@@ -37,8 +46,9 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
 🚀 Direction: ${analysis.recommendation}
 💯 Confidence: ${analysis.confidence}%
 
-📊 Market Overview:
-Structure: ${analysis.marketStructure || 'Trending'}
+📊 Market Analysis:
+Phase: ${analysis.marketPhase}
+Structure: ${analysis.marketStructure}
 Pattern: ${analysis.patterns?.join(', ') || 'Price Action'}
 
 🎯 TRADE SETUP:
@@ -69,7 +79,7 @@ Entry: Market Price
       <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
           <Brain className={`w-5 h-5 ${config.isPro ? 'text-yellow-400' : 'text-purple-400'}`} />
-          <h2 className="text-lg font-semibold text-white">Forex Engine {config.isPro && <span className="text-xs text-yellow-400 ml-1 font-bold">PRO</span>}</h2>
+          <h2 className="text-lg font-semibold text-white">Adaptive AI {config.isPro && <span className="text-xs text-yellow-400 ml-1 font-bold">PRO</span>}</h2>
         </div>
         <button
           onClick={onToggleActive}
@@ -100,10 +110,10 @@ Entry: Market Price
             <div className="flex items-center gap-2">
                 {isAnalyzing ? (
                     <span className="text-warning text-xs flex items-center gap-1 animate-pulse font-bold">
-                        <Activity className="w-3 h-3" /> CALCULATING PATTERNS...
+                        <Activity className="w-3 h-3" /> ANALYZING TRENDS...
                     </span>
                 ) : (
-                    <span className="text-gray-500 text-xs font-mono">SCANNING STRUCTURE</span>
+                    <span className="text-gray-500 text-xs font-mono">WAITING FOR PRICE</span>
                 )}
                 <div className={`w-2.5 h-2.5 rounded-full ${config.isActive ? 'bg-success animate-ping' : 'bg-gray-600'}`}></div>
             </div>
@@ -124,7 +134,11 @@ Entry: Market Price
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
 
-              <span className="text-xs font-bold tracking-widest uppercase mb-1 opacity-70">AI Signal</span>
+              <div className="flex items-center gap-2 mb-2 px-3 py-1 bg-black/10 rounded-full">
+                  {getPhaseIcon(analysis.marketPhase)}
+                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">{analysis.marketPhase || 'Unknown'} Phase</span>
+              </div>
+
               <h1 className="text-4xl font-black tracking-tighter">{analysis.recommendation}</h1>
               <div className="mt-2 flex items-center gap-2 text-sm font-medium">
                 <Zap className="w-4 h-4" />
@@ -185,7 +199,7 @@ Entry: Market Price
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2 min-h-[200px]">
             <Brain className="w-12 h-12 opacity-20 animate-pulse" />
-            <p className="text-sm">Engine Initializing...</p>
+            <p className="text-sm">Adaptability Engine Initializing...</p>
           </div>
         )}
       </div>

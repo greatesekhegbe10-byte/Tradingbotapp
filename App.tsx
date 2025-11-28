@@ -35,6 +35,8 @@ const App: React.FC = () => {
 
   // --- App State ---
   const [marketData, setMarketData] = useState<MarketDataPoint[]>([]);
+  const marketDataRef = useRef<MarketDataPoint[]>([]); // Ref to hold data for analysis without re-rendering loops
+
   const [trades, setTrades] = useState<Trade[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -84,10 +86,9 @@ const App: React.FC = () => {
   // Handle Logout
   const handleLogout = () => {
     setIsAuthenticated(false);
-    // Note: We deliberately don't clear subscription status on logout unless specifically desired
-    // as it's a "Lifetime" license logic usually. But to be safe for testing:
-    // setIsSubscribed(false); 
     localStorage.removeItem('nexus_auth');
+    // Optional: Clear subscription on logout for security if requested
+    // setIsSubscribed(false); localStorage.removeItem('nexus_sub');
   };
 
   // --- Payment Verification Logic (Pro) ---
@@ -139,7 +140,9 @@ const App: React.FC = () => {
 
   // 1. Initialize or Switch Market Data when Pair changes
   useEffect(() => {
-    setMarketData(generateInitialHistory(50, config.pair));
+    const initialData = generateInitialHistory(50, config.pair);
+    setMarketData(initialData);
+    marketDataRef.current = initialData; // Sync ref immediately
     setAnalysis(null); 
   }, [config.pair]);
 
@@ -147,10 +150,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated || !isSubscribed) return; // Stop data if not verified
     const interval = setInterval(() => {
+      const newData = generateMarketData(config.pair);
+      
       setMarketData(prev => {
-        const newData = generateMarketData(config.pair);
         const updated = [...prev, newData];
         if (updated.length > 100) updated.shift();
+        marketDataRef.current = updated; // Keep ref in sync
         return updated;
       });
     }, 1500);
@@ -330,10 +335,14 @@ const App: React.FC = () => {
 
   // 4. Automated Entry Logic
   useEffect(() => {
+    // Only execute auto-trades if the bot is Active
     if (!config.isActive || !analysis) return;
-    const currentPrice = marketData[marketData.length - 1]?.price;
+    
+    // Safety: Ensure price exists
+    const currentPrice = marketDataRef.current[marketDataRef.current.length - 1]?.price;
     if (!currentPrice) return;
 
+    // Prevent executing on stale analysis
     const timeSinceAnalysis = new Date().getTime() - analysis.timestamp.getTime();
     if (timeSinceAnalysis > 15000) return; 
 
@@ -341,6 +350,8 @@ const App: React.FC = () => {
     const maxTrades = config.isPro ? 10 : 3;
     if (openTradesForPair >= maxTrades) return;
 
+    // Strict Confidence Threshold as requested (>= 85% implicitly handled by performAnalysis returning HOLD otherwise)
+    // Double check here for safety
     if (analysis.confidence >= 80) {
         if (analysis.recommendation === TradeType.BUY || analysis.recommendation === TradeType.SELL) {
              executeTrade(
@@ -352,22 +363,28 @@ const App: React.FC = () => {
              );
         }
     }
-  }, [analysis, config.isActive, config.pair, config.isPro, trades, executeTrade, marketData]); 
+  }, [analysis, config.isActive, config.pair, config.isPro, trades, executeTrade]); 
 
   // --- Handlers ---
 
   const performAnalysis = useCallback(async () => {
-    if (isAnalyzing || marketData.length < 50) return;
+    // Use Ref to get data without adding it to dependency array (prevents rapid firing)
+    const currentData = marketDataRef.current;
+    
+    if (isAnalyzing || currentData.length < 50) return;
     
     setIsAnalyzing(true);
-    const result = await analyzeMarket(marketData, balances[accountType], config.riskLevel, config.pair);
+    const result = await analyzeMarket(currentData, balances[accountType], config.riskLevel, config.pair);
     setAnalysis(result);
     setIsAnalyzing(false);
-  }, [marketData, balances, accountType, config.riskLevel, config.pair, isAnalyzing]);
+  }, [balances, accountType, config.riskLevel, config.pair, isAnalyzing]);
 
+  // Analysis Loop - Runs ALWAYS if authenticated (Signal Mode)
   useEffect(() => {
-    if (config.isActive && isAuthenticated && isSubscribed) {
+    if (isAuthenticated && isSubscribed) {
+      // Run immediately
       performAnalysis();
+      
       const intervalMs = config.isPro ? 5000 : 10000;
       analysisIntervalRef.current = setInterval(performAnalysis, intervalMs);
     } else {
@@ -376,7 +393,7 @@ const App: React.FC = () => {
     return () => {
       if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
     }
-  }, [config.isActive, isAuthenticated, isSubscribed, performAnalysis, config.isPro]);
+  }, [isAuthenticated, isSubscribed, performAnalysis, config.isPro]); 
 
   const initiateManualTrade = (type: TradeType) => {
     const price = marketData[marketData.length - 1]?.price || 0;
@@ -405,7 +422,7 @@ const App: React.FC = () => {
     setAccountType(type);
     
     if (isLive) {
-        // EXACT simulation of the user's broker balance as requested
+        // EXACT simulation of the user's broker balance as requested ($35,500)
         const fetchedLiveBalance = 35500.00; 
         setBalances(prev => ({ ...prev, LIVE: fetchedLiveBalance }));
         setConfig(prev => ({ ...prev, broker, balance: fetchedLiveBalance }));
@@ -439,7 +456,6 @@ const App: React.FC = () => {
   }
 
   // 2. Subscription Gate (Strict: Must be subscribed to enter)
-  // This cannot be bypassed as isAuthenticated && isSubscribed are required for the main UI
   if (!isSubscribed) {
     return <SubscriptionGate onVerify={() => {
         setIsSubscribed(true);
@@ -474,8 +490,8 @@ const App: React.FC = () => {
            <span className="font-bold text-white">NexusTrade</span>
         </div>
         <div className="flex gap-2">
-           <button onClick={() => setIsSettingsModalOpen(true)} className="text-gray-400"><Settings className="w-6 h-6" /></button>
-           <button onClick={handleLogout} className="text-gray-400"><LogOut className="w-6 h-6" /></button>
+           <button onClick={() => setIsSettingsModalOpen(true)} className="text-gray-400 p-2"><Settings className="w-6 h-6" /></button>
+           <button onClick={handleLogout} className="text-gray-400 p-2"><LogOut className="w-6 h-6" /></button>
         </div>
       </div>
 

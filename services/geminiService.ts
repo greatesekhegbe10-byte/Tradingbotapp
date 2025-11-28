@@ -57,44 +57,50 @@ export const analyzeMarket = async (
   const maxRiskAmount = currentBalance * riskPct;
 
   const prompt = `
-    You are a "Sniper" High-Frequency Trading AI. Your goal is Extreme Precision.
-    You must Analyze the user's BALANCE and ensure minimal losses by calculating the precise Lot Size.
+    You are an ADAPTIVE Institutional Trading AI. 
+    Your Core Directive: ADAPT to the current Market Phase to generate "Sure Signals" with >85% accuracy.
 
-    USER FINANCIAL CONTEXT:
+    USER CONTEXT:
     - Balance: $${currentBalance}
-    - Max $ Risk Allowed per Trade: $${maxRiskAmount.toFixed(2)}
+    - Risk Cap: $${maxRiskAmount.toFixed(2)}
     
-    STRATEGY INSTRUCTIONS (Strict 85% Threshold):
-    1. **Strict Confidence Rule**: Only recommend BUY or SELL if your calculated confidence is **ABOVE 85%**.
-    2. If confidence is 85% or lower, you MUST output "HOLD".
-    3. **Confluence is King**: Only signal BUY/SELL if at least 3 indicators agree (e.g. RSI < 30 + Price at Lower Band + MACD Cross).
-    4. **Risk Management**:
-       - Calculate Stop Loss (SL) based on ATR (e.g. 1.5 * ATR).
-       - Calculate Take Profit (TP) to be at least 1.5x to 2x the risk distance (Risk:Reward > 1.5).
-       - **CRITICAL**: Calculate 'recommendedAmount' (Lot Size) such that if price hits SL, the loss is roughly $${maxRiskAmount.toFixed(2)}.
-       - Formula: Amount = Max_Risk_Dollars / ABS(Entry - SL).
-       - If calculated Amount exceeds available margin (Balance), reduce it to fit.
-    5. **Trend Filtering**: Do not trade against the SMA(20) unless it's a confirmed reversal pattern (Double Bottom/Top).
+    STEP 1: IDENTIFY MARKET PHASE
+    Analyze the recent price action and technicals to determine the phase:
+    - **Accumulation**: Price ranging at lows, RSI rising.
+    - **Uptrend**: Price > SMA20 > SMA50, Higher Highs.
+    - **Distribution**: Price ranging at highs, MACD divergence.
+    - **Downtrend**: Price < SMA20 < SMA50, Lower Lows.
+    - **Choppy**: No clear direction, narrow Bollinger Bands.
+
+    STEP 2: ADAPTIVE STRATEGY (The "Sure Signal" Logic)
+    - **If Uptrend**: ONLY signal BUY on pullbacks to SMA/EMA or Breakouts. Ignore Sell signals.
+    - **If Downtrend**: ONLY signal SELL on rallies to SMA/EMA or Breakdowns. Ignore Buy signals.
+    - **If Accumulation/Distribution**: Trade the Range Boundaries (Buy Support / Sell Resistance).
+    - **If Choppy**: OUTPUT HOLD. Do not trade.
+
+    STEP 3: CALCULATE ENTRY & RISK
+    - **Confidence > 85% Requirement**: Pattern MUST match Market Phase (e.g. Bull Flag in Uptrend).
+    - Stop Loss (SL): Set strictly using ATR (e.g. Price - 1.5*ATR for Buy).
+    - Take Profit (TP): Must offer > 1.5x Reward relative to Risk.
+    - Recommended Amount: Calculate lot size to risk exactly $${maxRiskAmount.toFixed(2)} if SL is hit.
 
     CONTEXT:
     Pair: ${pair}
     Current Price: ${currentPrice}
     Technicals: ${technicals}
-    Recent Prices: ${JSON.stringify(recentData.slice(-5).map(d => d.price))}
-
-    TASK:
-    Generate a highly accurate signal. If market is choppy or signals conflict, output HOLD.
+    Recent Trend Data: ${JSON.stringify(recentData.slice(-10).map(d => d.price))}
 
     OUTPUT JSON FORMAT:
     {
       "recommendation": "BUY" | "SELL" | "HOLD",
       "confidence": number (0-100),
-      "reasoning": "Concise bullet point analysis of confluence and risk.",
+      "marketPhase": "Accumulation" | "Uptrend" | "Distribution" | "Downtrend" | "Choppy",
+      "reasoning": "Explain strategy adaption (e.g., 'Uptrend detected, buying the pullback to SMA20').",
       "stopLoss": number,
       "takeProfit": number,
       "recommendedAmount": number,
-      "patterns": ["Pattern 1"],
-      "marketStructure": "Bullish" | "Bearish" | "Ranging"
+      "patterns": ["Found Pattern"],
+      "marketStructure": "Bullish" | "Bearish" | "Neutral"
     }
   `;
 
@@ -108,15 +114,16 @@ export const analyzeMarket = async (
           type: Type.OBJECT,
           properties: {
             recommendation: { type: Type.STRING, enum: ["BUY", "SELL", "HOLD"] },
-            confidence: { type: Type.NUMBER, description: "Confidence score 0-100. Must be > 85 for BUY/SELL." },
+            confidence: { type: Type.NUMBER, description: "Confidence score. Must be > 85 for action." },
+            marketPhase: { type: Type.STRING, enum: ["Accumulation", "Uptrend", "Distribution", "Downtrend", "Choppy"] },
             reasoning: { type: Type.STRING },
             stopLoss: { type: Type.NUMBER },
             takeProfit: { type: Type.NUMBER },
-            recommendedAmount: { type: Type.NUMBER, description: "Optimized lot size for balance protection" },
+            recommendedAmount: { type: Type.NUMBER },
             patterns: { type: Type.ARRAY, items: { type: Type.STRING } },
             marketStructure: { type: Type.STRING }
           },
-          required: ["recommendation", "confidence", "reasoning", "stopLoss", "takeProfit", "recommendedAmount", "patterns", "marketStructure"]
+          required: ["recommendation", "confidence", "marketPhase", "reasoning", "stopLoss", "takeProfit", "recommendedAmount", "patterns", "marketStructure"]
         }
       }
     });
@@ -128,12 +135,12 @@ export const analyzeMarket = async (
 
     let rec = TradeType.HOLD;
     
-    // Strict client-side enforcement of confidence threshold
-    if (parsed.confidence > 85) {
+    // STRICT CLIENT-SIDE FILTER FOR "SURE SIGNALS"
+    if (parsed.confidence > 85 && parsed.marketPhase !== 'Choppy') {
       if (parsed.recommendation === "BUY") rec = TradeType.BUY;
       if (parsed.recommendation === "SELL") rec = TradeType.SELL;
     } else {
-      rec = TradeType.HOLD; // Force HOLD if confidence is not high enough
+      rec = TradeType.HOLD; // Default to HOLD if confidence is low or market is choppy
     }
 
     return {
@@ -145,14 +152,12 @@ export const analyzeMarket = async (
       timestamp: new Date(),
       recommendedAmount: parsed.recommendedAmount,
       patterns: parsed.patterns || [],
-      marketStructure: parsed.marketStructure || 'Neutral'
+      marketStructure: parsed.marketStructure || 'Neutral',
+      marketPhase: parsed.marketPhase || 'Choppy'
     };
 
   } catch (error) {
     console.error("Gemini Analysis Failed:", error);
-    // Return a safe HOLD state on error, reusing last known price if possible or 0
-    // Since we don't have last known price easily accessible here without passing it more explicitly,
-    // we use the one calculated from history.
     const safePrice = dataHistory[dataHistory.length - 1]?.price || 0;
     
     return {
@@ -164,7 +169,8 @@ export const analyzeMarket = async (
       timestamp: new Date(),
       recommendedAmount: 0,
       patterns: [],
-      marketStructure: "Unknown"
+      marketStructure: "Unknown",
+      marketPhase: "Choppy"
     };
   }
 };

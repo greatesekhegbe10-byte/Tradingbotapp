@@ -24,9 +24,9 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
     if (!ref.trim()) return;
     setError(null);
 
-    // 1. strict validation simulation
-    if (ref.length < 8 || ref.toLowerCase().includes('test') || ref.toLowerCase().includes('1234')) {
-        setError("Invalid Transaction Reference. Bank could not locate this ID.");
+    // 1. Strict validation simulation
+    if (ref.length < 5) {
+        setError("Invalid Transaction Reference. ID is too short.");
         return;
     }
 
@@ -45,7 +45,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
     }, 3500);
 
     setTimeout(() => {
-        setVerificationStatus('Verifying Amount & Timestamp...');
+        setVerificationStatus('Verifying Amount ($20.00) & Timestamp...');
     }, 6000);
 
     setTimeout(() => {
@@ -118,7 +118,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
         </div>
 
         {/* Right Panel: Payment Form */}
-        <div className="flex-1 p-8">
+        <div className="flex-1 p-8 overflow-y-auto max-h-[600px]">
           <div className="flex gap-2 mb-6 p-1 bg-gray-900 rounded-lg">
             <button 
                 onClick={() => setActiveTab('local')}
@@ -223,14 +223,14 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
             
             {/* Status updates during verification */}
             {isVerifying && (
-                <div className="mt-4 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-                    <div className="flex items-center gap-3">
+                <div className="mt-4 p-3 bg-gray-900/50 rounded-lg border border-gray-700 animate-fade-in">
+                    <div className="flex items-center gap-3 mb-2">
                         <div className="relative">
                             <Wifi className="w-4 h-4 text-green-400 animate-pulse" />
                         </div>
                         <span className="text-xs font-mono text-gray-300">{verificationStatus}</span>
                     </div>
-                    <div className="w-full bg-gray-800 h-1 mt-2 rounded-full overflow-hidden">
+                    <div className="w-full bg-gray-800 h-1 rounded-full overflow-hidden">
                         <div className="h-full bg-green-400 animate-progress"></div>
                     </div>
                 </div>

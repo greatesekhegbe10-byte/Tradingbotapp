@@ -40,6 +40,7 @@ export interface AnalysisResult {
   // New Fields for Forex Engine
   patterns?: string[];
   marketStructure?: string;
+  marketPhase?: 'Accumulation' | 'Uptrend' | 'Distribution' | 'Downtrend' | 'Choppy'; // New Adaptive Field
 }
 
 export interface BotConfig {
