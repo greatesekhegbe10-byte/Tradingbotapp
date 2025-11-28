@@ -57,22 +57,24 @@ export const analyzeMarket = async (
   const maxRiskAmount = currentBalance * riskPct;
 
   const prompt = `
-    You are a "Sniper" High-Frequency Trading AI. Your goal is 80% WIN RATE.
+    You are a "Sniper" High-Frequency Trading AI. Your goal is Extreme Precision.
     You must Analyze the user's BALANCE and ensure minimal losses by calculating the precise Lot Size.
 
     USER FINANCIAL CONTEXT:
     - Balance: $${currentBalance}
     - Max $ Risk Allowed per Trade: $${maxRiskAmount.toFixed(2)}
     
-    STRATEGY INSTRUCTIONS (80/100 Success Rate):
-    1. **Confluence is King**: Only signal BUY/SELL if at least 3 indicators agree (e.g. RSI < 30 + Price at Lower Band + MACD Cross).
-    2. **Risk Management**:
+    STRATEGY INSTRUCTIONS (Strict 85% Threshold):
+    1. **Strict Confidence Rule**: Only recommend BUY or SELL if your calculated confidence is **ABOVE 85%**.
+    2. If confidence is 85% or lower, you MUST output "HOLD".
+    3. **Confluence is King**: Only signal BUY/SELL if at least 3 indicators agree (e.g. RSI < 30 + Price at Lower Band + MACD Cross).
+    4. **Risk Management**:
        - Calculate Stop Loss (SL) based on ATR (e.g. 1.5 * ATR).
        - Calculate Take Profit (TP) to be at least 1.5x to 2x the risk distance (Risk:Reward > 1.5).
        - **CRITICAL**: Calculate 'recommendedAmount' (Lot Size) such that if price hits SL, the loss is roughly $${maxRiskAmount.toFixed(2)}.
        - Formula: Amount = Max_Risk_Dollars / ABS(Entry - SL).
        - If calculated Amount exceeds available margin (Balance), reduce it to fit.
-    3. **Trend Filtering**: Do not trade against the SMA(20) unless it's a confirmed reversal pattern (Double Bottom/Top).
+    5. **Trend Filtering**: Do not trade against the SMA(20) unless it's a confirmed reversal pattern (Double Bottom/Top).
 
     CONTEXT:
     Pair: ${pair}
@@ -106,7 +108,7 @@ export const analyzeMarket = async (
           type: Type.OBJECT,
           properties: {
             recommendation: { type: Type.STRING, enum: ["BUY", "SELL", "HOLD"] },
-            confidence: { type: Type.NUMBER, description: "Confidence score 0-100. Be strict." },
+            confidence: { type: Type.NUMBER, description: "Confidence score 0-100. Must be > 85 for BUY/SELL." },
             reasoning: { type: Type.STRING },
             stopLoss: { type: Type.NUMBER },
             takeProfit: { type: Type.NUMBER },
@@ -125,8 +127,14 @@ export const analyzeMarket = async (
     const parsed = JSON.parse(resultText);
 
     let rec = TradeType.HOLD;
-    if (parsed.recommendation === "BUY") rec = TradeType.BUY;
-    if (parsed.recommendation === "SELL") rec = TradeType.SELL;
+    
+    // Strict client-side enforcement of confidence threshold
+    if (parsed.confidence > 85) {
+      if (parsed.recommendation === "BUY") rec = TradeType.BUY;
+      if (parsed.recommendation === "SELL") rec = TradeType.SELL;
+    } else {
+      rec = TradeType.HOLD; // Force HOLD if confidence is not high enough
+    }
 
     return {
       recommendation: rec,
@@ -142,12 +150,17 @@ export const analyzeMarket = async (
 
   } catch (error) {
     console.error("Gemini Analysis Failed:", error);
+    // Return a safe HOLD state on error, reusing last known price if possible or 0
+    // Since we don't have last known price easily accessible here without passing it more explicitly,
+    // we use the one calculated from history.
+    const safePrice = dataHistory[dataHistory.length - 1]?.price || 0;
+    
     return {
       recommendation: TradeType.HOLD,
       confidence: 0,
-      reasoning: "AI Disconnected.",
-      stopLoss: currentPrice,
-      takeProfit: currentPrice,
+      reasoning: "Market analysis temporarily unavailable.",
+      stopLoss: safePrice,
+      takeProfit: safePrice,
       timestamp: new Date(),
       recommendedAmount: 0,
       patterns: [],
