@@ -36,11 +36,9 @@ export interface AnalysisResult {
   stopLoss: number;
   takeProfit: number;
   timestamp: Date;
-  recommendedAmount?: number; // AI suggested position size based on balance
-  // New Fields for Forex Engine
+  // New Fields for visual feedback
   patterns?: string[];
   marketStructure?: string;
-  marketPhase?: 'Accumulation' | 'Uptrend' | 'Distribution' | 'Downtrend' | 'Choppy'; // New Adaptive Field
 }
 
 export interface BotConfig {
@@ -48,7 +46,4 @@ export interface BotConfig {
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   pair: string;
   balance: number;
-  broker?: string;
-  isPro: boolean;
-  paymentStatus: 'UNPAID' | 'PENDING' | 'VERIFIED';
 }

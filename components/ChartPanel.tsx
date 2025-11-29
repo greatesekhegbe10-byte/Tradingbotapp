@@ -1,7 +1,6 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { MarketDataPoint, Trade, TradeType } from '../types';
-import { getPairDetails } from '../services/marketService';
 
 interface ChartPanelProps {
   data: MarketDataPoint[];
@@ -12,15 +11,10 @@ interface ChartPanelProps {
 export const ChartPanel: React.FC<ChartPanelProps> = ({ data, pair, trades }) => {
   // Filter for open trades on this pair to show levels
   const activeTrades = trades.filter(t => t.symbol === pair && t.status === 'OPEN');
-  const details = getPairDetails(pair);
-
-  const formatPrice = (price: number) => {
-    return price.toFixed(details.decimals);
-  };
 
   return (
-    <div className="bg-surface p-4 md:p-6 rounded-xl border border-gray-700 h-[300px] md:h-[400px] flex flex-col">
-      <div className="flex justify-between items-center mb-4">
+    <div className="bg-surface p-6 rounded-xl border border-gray-700 h-[400px] flex flex-col">
+      <div className="flex justify-between items-center mb-6">
         <h2 className="text-lg font-semibold text-white">{pair} Live Market</h2>
         <div className="flex gap-2">
           <span className="px-2 py-1 bg-gray-700 text-xs rounded text-gray-300">1H</span>
@@ -40,21 +34,20 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({ data, pair, trades }) =>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
             <XAxis 
               dataKey="time" 
-              tick={{ fill: '#94a3b8', fontSize: 10 }} 
+              tick={{ fill: '#94a3b8', fontSize: 12 }} 
               stroke="#475569"
               minTickGap={30}
             />
             <YAxis 
-              domain={['dataMin', 'dataMax']} 
-              tick={{ fill: '#94a3b8', fontSize: 10 }} 
+              domain={['auto', 'auto']} 
+              tick={{ fill: '#94a3b8', fontSize: 12 }} 
               stroke="#475569"
               width={60}
-              tickFormatter={(value) => formatPrice(value)}
             />
             <Tooltip 
               contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
               itemStyle={{ color: '#3b82f6' }}
-              formatter={(value: number) => [formatPrice(value), 'Price']}
+              formatter={(value: number) => [`$${value.toFixed(2)}`, 'Price']}
             />
             <Area 
               type="monotone" 

@@ -45,62 +45,44 @@ export const analyzeMarket = async (
   const technicals = `
     Price: ${currentPrice}
     RSI (14): ${rsi ? rsi.toFixed(2) : 'N/A'}
-    SMA (7): ${smaShort ? smaShort.toFixed(5) : 'N/A'}
-    SMA (20): ${smaLong ? smaLong.toFixed(5) : 'N/A'}
-    MACD: ${macd ? `Hist: ${macd.histogram.toFixed(5)}` : 'N/A'}
-    Bollinger: ${bands ? `Upper: ${bands.upper.toFixed(5)}, Lower: ${bands.lower.toFixed(5)}` : 'N/A'}
-    ATR: ${atr ? atr.toFixed(5) : 'N/A'}
+    SMA (7): ${smaShort ? smaShort.toFixed(2) : 'N/A'}
+    SMA (20): ${smaLong ? smaLong.toFixed(2) : 'N/A'}
+    MACD: ${macd ? `Hist: ${macd.histogram.toFixed(4)}` : 'N/A'}
+    Bollinger: ${bands ? `Upper: ${bands.upper.toFixed(2)}, Lower: ${bands.lower.toFixed(2)}` : 'N/A'}
+    ATR: ${atr ? atr.toFixed(4) : 'N/A'}
   `;
   
-  // Define risk dollars based on level and balance
-  const riskPct = riskLevel === 'HIGH' ? 0.05 : riskLevel === 'MEDIUM' ? 0.02 : 0.01; // 1%, 2%, 5% of balance risk per trade
-  const maxRiskAmount = currentBalance * riskPct;
-
   const prompt = `
-    You are an ADAPTIVE Institutional Trading AI. 
-    Your Core Directive: ADAPT to the current Market Phase to generate "Sure Signals" with >85% accuracy.
-
-    USER CONTEXT:
-    - Balance: $${currentBalance}
-    - Risk Cap: $${maxRiskAmount.toFixed(2)}
+    You are an Expert Crypto & Forex Trading AI.
+    Analyze the following market data for ${pair}.
     
-    STEP 1: IDENTIFY MARKET PHASE
-    Analyze the recent price action and technicals to determine the phase:
-    - **Accumulation**: Price ranging at lows, RSI rising.
-    - **Uptrend**: Price > SMA20 > SMA50, Higher Highs.
-    - **Distribution**: Price ranging at highs, MACD divergence.
-    - **Downtrend**: Price < SMA20 < SMA50, Lower Lows.
-    - **Choppy**: No clear direction, narrow Bollinger Bands.
-
-    STEP 2: ADAPTIVE STRATEGY (The "Sure Signal" Logic)
-    - **If Uptrend**: ONLY signal BUY on pullbacks to SMA/EMA or Breakouts. Ignore Sell signals.
-    - **If Downtrend**: ONLY signal SELL on rallies to SMA/EMA or Breakdowns. Ignore Buy signals.
-    - **If Accumulation/Distribution**: Trade the Range Boundaries (Buy Support / Sell Resistance).
-    - **If Choppy**: OUTPUT HOLD. Do not trade.
-
-    STEP 3: CALCULATE ENTRY & RISK
-    - **Confidence > 85% Requirement**: Pattern MUST match Market Phase (e.g. Bull Flag in Uptrend).
-    - Stop Loss (SL): Set strictly using ATR (e.g. Price - 1.5*ATR for Buy).
-    - Take Profit (TP): Must offer > 1.5x Reward relative to Risk.
-    - Recommended Amount: Calculate lot size to risk exactly $${maxRiskAmount.toFixed(2)} if SL is hit.
-
-    CONTEXT:
-    Pair: ${pair}
     Current Price: ${currentPrice}
-    Technicals: ${technicals}
-    Recent Trend Data: ${JSON.stringify(recentData.slice(-10).map(d => d.price))}
-
-    OUTPUT JSON FORMAT:
+    
+    Technical Indicators:
+    ${technicals}
+    
+    Recent Price History (Last 10 candles): ${JSON.stringify(recentData.slice(-10).map(d => d.price))}
+    
+    Task:
+    1. Identify Candlestick Patterns (e.g., Hammer, Doji, Engulfing, Shooting Star).
+    2. Determine Market Structure (Bullish, Bearish, Ranging).
+    3. Provide a Trade Recommendation (BUY, SELL, HOLD).
+    4. Calculate precise Stop Loss (SL) and Take Profit (TP) levels to minimize loss.
+    
+    Strict Rules:
+    - Only recommend BUY or SELL if confidence is ABOVE 70%. Otherwise, output HOLD.
+    - Stop Loss should be tight (based on ATR or recent support/resistance).
+    - Take Profit should be at least 1.5x the risk.
+    
+    Output strictly in JSON format matching this schema:
     {
       "recommendation": "BUY" | "SELL" | "HOLD",
       "confidence": number (0-100),
-      "marketPhase": "Accumulation" | "Uptrend" | "Distribution" | "Downtrend" | "Choppy",
-      "reasoning": "Explain strategy adaption (e.g., 'Uptrend detected, buying the pullback to SMA20').",
+      "reasoning": "string (brief explanation of patterns and indicators)",
       "stopLoss": number,
       "takeProfit": number,
-      "recommendedAmount": number,
-      "patterns": ["Found Pattern"],
-      "marketStructure": "Bullish" | "Bearish" | "Neutral"
+      "patterns": ["string", "string"],
+      "marketStructure": "string"
     }
   `;
 
@@ -114,16 +96,14 @@ export const analyzeMarket = async (
           type: Type.OBJECT,
           properties: {
             recommendation: { type: Type.STRING, enum: ["BUY", "SELL", "HOLD"] },
-            confidence: { type: Type.NUMBER, description: "Confidence score. Must be > 85 for action." },
-            marketPhase: { type: Type.STRING, enum: ["Accumulation", "Uptrend", "Distribution", "Downtrend", "Choppy"] },
+            confidence: { type: Type.NUMBER },
             reasoning: { type: Type.STRING },
             stopLoss: { type: Type.NUMBER },
             takeProfit: { type: Type.NUMBER },
-            recommendedAmount: { type: Type.NUMBER },
             patterns: { type: Type.ARRAY, items: { type: Type.STRING } },
             marketStructure: { type: Type.STRING }
           },
-          required: ["recommendation", "confidence", "marketPhase", "reasoning", "stopLoss", "takeProfit", "recommendedAmount", "patterns", "marketStructure"]
+          required: ["recommendation", "confidence", "reasoning", "stopLoss", "takeProfit"]
         }
       }
     });
@@ -133,27 +113,15 @@ export const analyzeMarket = async (
 
     const parsed = JSON.parse(resultText);
 
-    let rec = TradeType.HOLD;
-    
-    // STRICT CLIENT-SIDE FILTER FOR "SURE SIGNALS"
-    if (parsed.confidence > 85 && parsed.marketPhase !== 'Choppy') {
-      if (parsed.recommendation === "BUY") rec = TradeType.BUY;
-      if (parsed.recommendation === "SELL") rec = TradeType.SELL;
-    } else {
-      rec = TradeType.HOLD; // Default to HOLD if confidence is low or market is choppy
-    }
-
     return {
-      recommendation: rec,
+      recommendation: parsed.recommendation === "BUY" ? TradeType.BUY : parsed.recommendation === "SELL" ? TradeType.SELL : TradeType.HOLD,
       confidence: parsed.confidence,
       reasoning: parsed.reasoning,
       stopLoss: parsed.stopLoss,
       takeProfit: parsed.takeProfit,
       timestamp: new Date(),
-      recommendedAmount: parsed.recommendedAmount,
       patterns: parsed.patterns || [],
-      marketStructure: parsed.marketStructure || 'Neutral',
-      marketPhase: parsed.marketPhase || 'Choppy'
+      marketStructure: parsed.marketStructure || 'Neutral'
     };
 
   } catch (error) {
@@ -167,48 +135,49 @@ export const analyzeMarket = async (
       stopLoss: safePrice,
       takeProfit: safePrice,
       timestamp: new Date(),
-      recommendedAmount: 0,
       patterns: [],
-      marketStructure: "Unknown",
-      marketPhase: "Choppy"
+      marketStructure: "Unknown"
     };
   }
 };
 
-export const chatWithAssistant = async (message: string, marketContext: string, userConfig: BotConfig) => {
+export const chatWithAssistant = async (
+  message: string,
+  marketContext: string,
+  config: BotConfig
+): Promise<string> => {
   const ai = getAIClient();
-  if (!ai) return "I cannot reply without an API Key.";
+  if (!ai) return "I cannot access the AI service at the moment. Please check your API key.";
 
-  const systemInstructions = `
-    You are the NexusTrade Strategy Guardian.
+  const prompt = `
+    You are Nexus, an Expert Trading Assistant.
     
-    USER FINANCIALS:
-    - Balance: $${userConfig.balance}
-    - Risk Level: ${userConfig.riskLevel}
-    - Pro Status: ${userConfig.isPro ? 'Active' : 'Inactive'}
-    
-    GOAL: Help the user trade safely and maximize profits.
-    
-    RULES:
-    1. If the user has a low balance (<$100), strictly advise them to use LOW risk and micro-lots.
-    2. Explain your signals based on Confluence (RSI + MACD + Structure).
-    3. If asked about Pro features, check 'isPro'. If false, check 'paymentStatus'. 
-       Format: [Access Status] → [Payment Status] → [Instruction]
-    
-    CONTEXT:
+    Context Information:
     ${marketContext}
+    
+    User Configuration:
+    - Pair: ${config.pair}
+    - Risk Level: ${config.riskLevel}
+    - Balance: $${config.balance.toFixed(2)}
+    
+    User Message: "${message}"
+    
+    Provide a concise, professional, and helpful response. Focus on trading insights, technical analysis explanation, or platform assistance.
+    Do not give financial advice.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `
-        ${systemInstructions}
-        User Message: ${message}
-      `
+      contents: prompt,
+      config: {
+        systemInstruction: "You are Nexus, a professional trading AI assistant."
+      }
     });
-    return response.text;
+
+    return response.text || "I couldn't generate a response.";
   } catch (error) {
-    return "Connection error.";
+    console.error("Chat Error:", error);
+    return "I encountered an error while processing your request.";
   }
 };

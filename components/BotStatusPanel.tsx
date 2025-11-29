@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { AnalysisResult, TradeType, BotConfig } from '../types';
-import { Brain, Play, Square, Activity, ShieldAlert, Zap, Crown, Copy, Check, Share2, BarChart2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { getPairDetails } from '../services/marketService';
+import { Brain, Play, Square, Activity, ShieldAlert, Zap, Copy, Check, BarChart2 } from 'lucide-react';
 
 interface BotStatusPanelProps {
   analysis: AnalysisResult | null;
@@ -12,7 +11,6 @@ interface BotStatusPanelProps {
 
 export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config, onToggleActive, isAnalyzing }) => {
   const [copied, setCopied] = useState(false);
-  const pairDetails = getPairDetails(config.pair);
 
   const getRecommendationColor = (rec: TradeType) => {
     switch (rec) {
@@ -22,70 +20,35 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ analysis, config
     }
   };
 
-  const getPhaseIcon = (phase?: string) => {
-    switch(phase) {
-        case 'Uptrend': return <TrendingUp className="w-4 h-4 text-success" />;
-        case 'Downtrend': return <TrendingDown className="w-4 h-4 text-danger" />;
-        case 'Choppy': return <Minus className="w-4 h-4 text-yellow-500" />;
-        default: return <Activity className="w-4 h-4 text-primary" />;
-    }
-  };
-
-  const formatPrice = (price: number) => {
-    return price.toLocaleString(undefined, { minimumFractionDigits: pairDetails.decimals, maximumFractionDigits: pairDetails.decimals });
-  };
-
   const handleCopySignal = () => {
     if (!analysis) return;
-    
-    // Exact Copy-Paste Format Requested
     const signalText = `
-🔥 TRADING SIGNAL - NEXUS AI 🔥
-
-📈 Pair: ${config.pair}
-🚀 Direction: ${analysis.recommendation}
-💯 Confidence: ${analysis.confidence}%
-
-📊 Market Analysis:
-Phase: ${analysis.marketPhase}
-Structure: ${analysis.marketStructure}
-Pattern: ${analysis.patterns?.join(', ') || 'Price Action'}
-
-🎯 TRADE SETUP:
-Entry: Market Price
-⛔ SL: ${formatPrice(analysis.stopLoss)}
-✅ TP: ${formatPrice(analysis.takeProfit)}
-
-🧠 AI Bias: ${analysis.reasoning}
-
-⚠️ Risk: ${config.riskLevel}
+🚀 NEXUS AI SIGNAL
+Pair: ${config.pair}
+Action: ${analysis.recommendation}
+Entry: Market
+SL: ${analysis.stopLoss.toFixed(2)}
+TP: ${analysis.takeProfit.toFixed(2)}
+Confidence: ${analysis.confidence}%
+Reason: ${analysis.patterns?.join(', ') || 'Technical Setup'}
     `.trim();
-
     navigator.clipboard.writeText(signalText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="bg-surface rounded-xl border border-gray-700 flex flex-col overflow-hidden relative shadow-lg">
-      {/* Pro Badge Watermark */}
-      {config.isPro && (
-        <div className="absolute top-2 right-14 opacity-10 pointer-events-none">
-             <Crown className="w-24 h-24 text-yellow-500" />
-        </div>
-      )}
-
-      {/* Header / Controls */}
-      <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center z-10">
+    <div className="bg-surface rounded-xl border border-gray-700 flex flex-col h-full overflow-hidden relative shadow-lg">
+      <div className="p-4 border-b border-gray-700 bg-gray-800/50 flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <Brain className={`w-5 h-5 ${config.isPro ? 'text-yellow-400' : 'text-purple-400'}`} />
-          <h2 className="text-lg font-semibold text-white">Adaptive AI {config.isPro && <span className="text-xs text-yellow-400 ml-1 font-bold">PRO</span>}</h2>
+          <Brain className="w-5 h-5 text-accent" />
+          <h2 className="text-lg font-semibold text-white">AI Command Center</h2>
         </div>
         <button
           onClick={onToggleActive}
           className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold transition-all shadow-lg ${
             config.isActive 
-              ? 'bg-danger text-white hover:bg-red-600 shadow-red-900/20 animate-pulse' 
+              ? 'bg-danger text-white hover:bg-red-600 shadow-red-900/20' 
               : 'bg-success text-white hover:bg-green-600 shadow-green-900/20'
           }`}
         >
@@ -101,20 +64,15 @@ Entry: Market Price
         </button>
       </div>
 
-      {/* Main Analysis Content */}
-      <div className="p-6 flex-1 flex flex-col gap-6 z-10">
+      <div className="p-6 flex-1 flex flex-col gap-6">
         
         {/* Status Indicator */}
         <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm font-medium">Engine Status</span>
+            <span className="text-gray-400 text-sm font-medium">System Status</span>
             <div className="flex items-center gap-2">
-                {isAnalyzing ? (
-                    <span className="text-warning text-xs flex items-center gap-1 animate-pulse font-bold">
-                        <Activity className="w-3 h-3" /> ANALYZING TRENDS...
-                    </span>
-                ) : (
-                    <span className="text-gray-500 text-xs font-mono">WAITING FOR PRICE</span>
-                )}
+                <span className={`text-xs font-mono ${isAnalyzing ? 'text-warning animate-pulse' : 'text-gray-500'}`}>
+                    {isAnalyzing ? 'ANALYZING PATTERNS...' : 'IDLE'}
+                </span>
                 <div className={`w-2.5 h-2.5 rounded-full ${config.isActive ? 'bg-success animate-ping' : 'bg-gray-600'}`}></div>
             </div>
         </div>
@@ -130,16 +88,11 @@ Entry: Market Price
                 className="absolute top-3 right-3 p-2 rounded-lg bg-black/20 hover:bg-black/40 transition-colors text-current flex items-center gap-2"
                 title="Copy Signal Strategy"
               >
-                <span className="text-[10px] font-bold uppercase hidden sm:block">Copy Signal</span>
+                <span className="text-xs font-bold uppercase hidden sm:block">Copy Signal</span>
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
 
-              <div className="flex items-center gap-2 mb-2 px-3 py-1 bg-black/10 rounded-full">
-                  {getPhaseIcon(analysis.marketPhase)}
-                  <span className="text-xs font-bold uppercase tracking-wider opacity-80">{analysis.marketPhase || 'Unknown'} Phase</span>
-              </div>
-
-              <h1 className="text-4xl font-black tracking-tighter">{analysis.recommendation}</h1>
+              <h1 className="text-5xl font-black tracking-tighter">{analysis.recommendation}</h1>
               <div className="mt-2 flex items-center gap-2 text-sm font-medium">
                 <Zap className="w-4 h-4" />
                 <span>Confidence: {analysis.confidence}%</span>
@@ -148,27 +101,24 @@ Entry: Market Price
 
             {/* Pattern & Structure Info */}
             <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-900/50 p-2.5 rounded-lg border border-gray-700 flex flex-col">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700 flex flex-col">
+                    <span className="text-xs text-gray-400 uppercase font-bold flex items-center gap-1">
                         <BarChart2 className="w-3 h-3" /> Structure
                     </span>
-                    <span className="text-sm font-mono text-white mt-1">{analysis.marketStructure || 'Analyzing...'}</span>
+                    <span className="text-sm font-mono text-white mt-1">{analysis.marketStructure || 'Neutral'}</span>
                 </div>
-                <div className="bg-gray-900/50 p-2.5 rounded-lg border border-gray-700 flex flex-col">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                        <Activity className="w-3 h-3" /> Patterns
+                <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700 flex flex-col">
+                    <span className="text-xs text-gray-400 uppercase font-bold flex items-center gap-1">
+                        <Activity className="w-3 h-3" /> Pattern
                     </span>
                     <span className="text-sm font-mono text-white mt-1 truncate">
-                        {analysis.patterns && analysis.patterns.length > 0 ? analysis.patterns.join(', ') : 'None'}
+                        {analysis.patterns && analysis.patterns.length > 0 ? analysis.patterns[0] : 'None'}
                     </span>
                 </div>
             </div>
 
             {/* Reasoning */}
-            <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 relative group">
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                 <Share2 className="w-3 h-3 text-gray-500" />
-              </div>
+            <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
               <p className="text-gray-300 text-sm leading-relaxed italic">
                 "{analysis.reasoning}"
               </p>
@@ -182,7 +132,7 @@ Entry: Market Price
                   <ShieldAlert className="w-3 h-3" /> Stop Loss
                 </div>
                 <div className="text-lg font-mono text-danger font-bold pl-2">
-                  ${formatPrice(analysis.stopLoss)}
+                  ${analysis.stopLoss.toFixed(2)}
                 </div>
               </div>
               <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 relative overflow-hidden">
@@ -191,7 +141,7 @@ Entry: Market Price
                   <Activity className="w-3 h-3" /> Take Profit
                 </div>
                 <div className="text-lg font-mono text-success font-bold pl-2">
-                  ${formatPrice(analysis.takeProfit)}
+                  ${analysis.takeProfit.toFixed(2)}
                 </div>
               </div>
             </div>
@@ -199,7 +149,7 @@ Entry: Market Price
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-2 min-h-[200px]">
             <Brain className="w-12 h-12 opacity-20 animate-pulse" />
-            <p className="text-sm">Adaptability Engine Initializing...</p>
+            <p className="text-sm">Waiting for high-confidence setup...</p>
           </div>
         )}
       </div>
