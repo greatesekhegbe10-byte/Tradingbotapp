@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { MarketDataPoint, Trade, TradeType } from '../types';
@@ -18,7 +19,7 @@ export const ChartPanel: React.FC<ChartPanelProps> = ({ data, pair, trades }) =>
         <h2 className="text-lg font-semibold text-white">{pair} Live Market</h2>
         <div className="flex gap-2">
           <span className="px-2 py-1 bg-gray-700 text-xs rounded text-gray-300">1H</span>
-          <span className="px-2 py-1 bg-primary text-xs rounded text-white font-bold">LIVE</span>
+          <span className="px-2 py-1 bg-primary text-xs rounded text-white font-bold animate-pulse">LIVE DATA</span>
         </div>
       </div>
       

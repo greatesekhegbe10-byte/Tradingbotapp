@@ -1,3 +1,4 @@
+
 export enum TradeType {
   BUY = 'BUY',
   SELL = 'SELL',
@@ -44,6 +45,9 @@ export interface AnalysisResult {
 export interface BotConfig {
   isActive: boolean;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  sensitivity: 'LOW' | 'MEDIUM' | 'HIGH';
   pair: string;
   balance: number;
+  isPro: boolean;
+  paymentStatus: 'UNPAID' | 'PENDING' | 'VERIFIED';
 }

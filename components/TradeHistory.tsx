@@ -38,7 +38,7 @@ TP: ${trade.takeProfit ? trade.takeProfit.toFixed(getPairDetails(trade.symbol).d
         const text = importText.toUpperCase();
         
         // Extract Pair
-        const pairMatch = text.match(/PAIR:\s*([A-Z]{3}\/[A-Z]{3})/);
+        const pairMatch = text.match(/PAIR:\s*([A-Z0-9\/]+)/);
         const symbol = pairMatch ? pairMatch[1] : null;
 
         // Extract Action
