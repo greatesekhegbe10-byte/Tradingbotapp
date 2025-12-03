@@ -85,7 +85,14 @@ const App: React.FC = () => {
     };
     
     initApp();
-  }, []); // Run once on mount
+
+    // Background sync to ensure prices don't drift from reality
+    const syncInterval = setInterval(() => {
+        fetchLivePrices();
+    }, 60000); // Check live APIs every minute
+
+    return () => clearInterval(syncInterval);
+  }, []); 
 
   // Handle Pair Change - Re-generate history based on new price
   useEffect(() => {

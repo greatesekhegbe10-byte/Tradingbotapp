@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnalysisResult, TradeType, BotConfig } from '../types';
-import { Brain, Play, Square, Activity, ShieldAlert, Zap, Copy, Check, BarChart2 } from 'lucide-react';
+import { Brain, Play, Square, Activity, ShieldAlert, Zap, Copy, Check, BarChart2, AlertTriangle, WifiOff } from 'lucide-react';
 
 interface BotStatusPanelProps {
   analysis: AnalysisResult | null;
@@ -36,6 +36,8 @@ Reason: ${analysis.patterns?.join(', ') || 'Technical Setup'}
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const isSystemError = analysis?.reasoning.includes("CRITICAL") || analysis?.marketStructure === "AUTH_ERR" || analysis?.marketStructure === "OFFLINE";
 
   return (
     <div className="bg-surface rounded-xl border border-gray-700 flex flex-col h-full overflow-hidden relative shadow-lg">
@@ -77,7 +79,18 @@ Reason: ${analysis.patterns?.join(', ') || 'Technical Setup'}
             </div>
         </div>
 
-        {analysis ? (
+        {isSystemError && analysis ? (
+             <div className="flex-1 flex flex-col items-center justify-center p-6 bg-red-900/10 border border-red-500/50 rounded-xl animate-fade-in text-center">
+                 <div className="w-12 h-12 bg-red-900/30 rounded-full flex items-center justify-center mb-4">
+                    <WifiOff className="w-6 h-6 text-red-500" />
+                 </div>
+                 <h3 className="text-lg font-bold text-red-500 mb-2">System Alert</h3>
+                 <p className="text-sm text-red-200 mb-4">{analysis.reasoning}</p>
+                 <div className="text-xs text-gray-400 bg-black/20 p-2 rounded">
+                    Error Code: {analysis.marketStructure}
+                 </div>
+             </div>
+        ) : analysis ? (
           <>
             {/* Recommendation Big Display */}
             <div className={`relative flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all ${getRecommendationColor(analysis.recommendation)}`}>

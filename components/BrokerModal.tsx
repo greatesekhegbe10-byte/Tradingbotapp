@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Server, Globe, CheckCircle, AlertCircle, Zap, Search } from 'lucide-react';
+import { X, Server, Globe, CheckCircle, AlertCircle, Zap, Search, Download, FileCode, CloudLightning, Key, Radio, Link as LinkIcon } from 'lucide-react';
+import { getNexusEA } from '../services/eaScript';
 
 interface BrokerModalProps {
   isOpen: boolean;
@@ -13,6 +13,12 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Bridge Config State
+  const [connectionMethod, setConnectionMethod] = useState<'cloud' | 'ea' | 'webhook'>('ea');
+  const [metaApiToken, setMetaApiToken] = useState('');
+  const [bridgeId, setBridgeId] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
   
   const [formData, setFormData] = useState({
     server: 'Live-Server-1',
@@ -31,6 +37,8 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
       setError(null);
       setConnecting(false);
       setSearchTerm('');
+      // Generate random webhook
+      setWebhookUrl(`https://hook.nexustrade.ai/v1/${Math.random().toString(36).substring(2, 10)}`);
     }
   }, [isOpen]);
 
@@ -44,6 +52,17 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
 
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Webhook Mode bypasses standard validation
+    if (selectedBroker.includes('Webhook')) {
+       setConnecting(true);
+       setTimeout(() => {
+           onConnect('Webhook Bridge', true);
+           setConnecting(false);
+           onClose();
+       }, 1000);
+       return;
+    }
     
     // Basic Validation
     if (!formData.login || !formData.password || !formData.server) {
@@ -91,6 +110,20 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
     }, 2000);
   };
 
+  const handleDownloadEA = () => {
+      // Use the MetaApi token if provided, otherwise default key
+      const apiKeyToUse = metaApiToken.length > 10 ? metaApiToken : "YOUR_API_KEY_HERE";
+      const eaCode = getNexusEA(apiKeyToUse);
+      
+      const element = document.createElement("a");
+      const file = new Blob([eaCode], {type: 'text/plain'});
+      element.href = URL.createObjectURL(file);
+      element.download = "NexusTrader_Pro_EA.mq5";
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+  };
+
   const allBrokers = [
     { name: 'Pocket Option', icon: 'PO', color: 'text-blue-400 border-blue-400' },
     { name: 'Quotex', icon: 'QX', color: 'text-orange-400 border-orange-400' },
@@ -107,6 +140,10 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
   ];
 
   const filteredBrokers = allBrokers.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  // Check if a bridge-compatible broker is selected
+  const isBridgeBroker = selectedBroker.includes('MetaTrader') || selectedBroker.includes('Exness') || selectedBroker.includes('XM');
+  const isWebhook = selectedBroker.includes('Webhook') || selectedBroker === 'Custom Webhook';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
@@ -145,7 +182,11 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
                   <button
                     key={b.name}
                     type="button"
-                    onClick={() => setSelectedBroker(b.name)}
+                    onClick={() => {
+                        setSelectedBroker(b.name);
+                        if(b.name.includes('Webhook')) setConnectionMethod('webhook');
+                        else if(b.name.includes('MetaTrader')) setConnectionMethod('ea');
+                    }}
                     className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${
                       selectedBroker === b.name 
                         ? `bg-gray-800 ${b.color} shadow-lg shadow-black/40` 
@@ -167,6 +208,111 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
                 </button>
             )}
           </div>
+          
+          {/* Bridge Configuration Section */}
+          {(isBridgeBroker || isWebhook) && (
+              <div className="mb-6 bg-gray-900/50 border border-gray-700 rounded-xl overflow-hidden">
+                  <div className="p-3 bg-gray-800/50 border-b border-gray-700 flex items-center gap-2">
+                      <CloudLightning className="w-4 h-4 text-yellow-500" />
+                      <h4 className="text-sm font-bold text-white">Bridge Mode Configuration</h4>
+                  </div>
+                  
+                  <div className="p-4 space-y-4">
+                      {/* Mode Selector */}
+                      <div className="flex bg-gray-800 rounded-lg p-1 gap-1">
+                          <button 
+                            onClick={() => setConnectionMethod('ea')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${connectionMethod === 'ea' ? 'bg-gray-700 text-white shadow' : 'text-gray-500'}`}
+                          >
+                              Local EA / EEA
+                          </button>
+                          <button 
+                            onClick={() => setConnectionMethod('cloud')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${connectionMethod === 'cloud' ? 'bg-gray-700 text-white shadow' : 'text-gray-500'}`}
+                          >
+                              MetaApi Cloud
+                          </button>
+                          <button 
+                            onClick={() => setConnectionMethod('webhook')}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${connectionMethod === 'webhook' ? 'bg-gray-700 text-white shadow' : 'text-gray-500'}`}
+                          >
+                              Webhook
+                          </button>
+                      </div>
+
+                      {connectionMethod === 'cloud' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in">
+                              <div className="relative">
+                                  <Key className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+                                  <input 
+                                      type="password" 
+                                      placeholder="MetaApi / Bridge Token"
+                                      value={metaApiToken}
+                                      onChange={(e) => setMetaApiToken(e.target.value)}
+                                      className="w-full bg-gray-800 border border-gray-600 rounded-lg py-2 pl-9 pr-3 text-xs text-white focus:border-primary outline-none"
+                                  />
+                              </div>
+                              <div className="relative">
+                                  <Server className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+                                  <input 
+                                      type="text" 
+                                      placeholder="Bridge Account ID"
+                                      value={bridgeId}
+                                      onChange={(e) => setBridgeId(e.target.value)}
+                                      className="w-full bg-gray-800 border border-gray-600 rounded-lg py-2 pl-9 pr-3 text-xs text-white focus:border-primary outline-none"
+                                  />
+                              </div>
+                          </div>
+                      )}
+
+                      {connectionMethod === 'ea' && (
+                          <div className="flex items-center justify-between p-3 bg-blue-900/10 border border-blue-500/20 rounded-lg animate-fade-in">
+                              <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-blue-900/20 rounded-lg text-blue-400">
+                                      <FileCode className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                      <h4 className="text-sm font-bold text-white">Nexus Pro EA (.MQ5)</h4>
+                                      <p className="text-[10px] text-gray-400">Auto-Fix Logic • Binary Mode • EEA Ready</p>
+                                  </div>
+                              </div>
+                              <button 
+                                onClick={handleDownloadEA}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-blue-900/20"
+                              >
+                                  <Download className="w-3 h-3" /> Get Bot File
+                              </button>
+                          </div>
+                      )}
+
+                      {connectionMethod === 'webhook' && (
+                          <div className="animate-fade-in">
+                              <label className="text-xs text-gray-400 mb-1 block">Your Personal Webhook URL</label>
+                              <div className="flex gap-2">
+                                  <div className="relative flex-1">
+                                    <LinkIcon className="absolute left-3 top-2.5 w-4 h-4 text-primary" />
+                                    <input 
+                                        type="text" 
+                                        readOnly
+                                        value={webhookUrl}
+                                        className="w-full bg-gray-800 border border-primary/30 rounded-lg py-2 pl-9 pr-3 text-xs text-primary font-mono outline-none"
+                                    />
+                                  </div>
+                                  <button 
+                                    onClick={() => navigator.clipboard.writeText(webhookUrl)}
+                                    className="px-3 bg-gray-800 border border-gray-600 rounded-lg hover:bg-gray-700 text-white"
+                                  >
+                                      <Download className="w-4 h-4" />
+                                  </button>
+                              </div>
+                              <p className="text-[10px] text-gray-500 mt-2">
+                                  Paste this URL into TradingView alerts or your external EEA to receive signals directly.
+                              </p>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          )}
 
           {/* Error Display */}
           {error && (
@@ -176,74 +322,96 @@ export const BrokerModal: React.FC<BrokerModalProps> = ({ isOpen, onClose, onCon
             </div>
           )}
 
-          {/* Connection Form */}
-          <form onSubmit={handleConnect} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Server / API Endpoint</label>
-              <div className="relative">
-                <Server className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
-                <input 
-                  type="text" 
-                  name="server"
-                  value={formData.server}
-                  onChange={handleInputChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-9 pr-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
-                  placeholder={`e.g. live-server.${selectedBroker.toLowerCase().replace(/\s/g, '')}.com`}
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Login ID / API Key</label>
-                <input 
-                  type="text" 
-                  name="login"
-                  value={formData.login}
-                  onChange={handleInputChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 px-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
-                  placeholder="Account ID" 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Password / Secret</label>
-                <input 
-                  type="password" 
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 px-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
-                  placeholder="••••••••" 
-                />
-              </div>
-            </div>
+          {/* Connection Form (Hidden for Webhook) */}
+          {!isWebhook && connectionMethod !== 'webhook' && (
+              <form onSubmit={handleConnect} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Server / API Endpoint</label>
+                  <div className="relative">
+                    <Server className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+                    <input 
+                      type="text" 
+                      name="server"
+                      value={formData.server}
+                      onChange={handleInputChange}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-9 pr-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
+                      placeholder={`e.g. live-server.${selectedBroker.toLowerCase().replace(/\s/g, '')}.com`}
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Login ID / API Key</label>
+                    <input 
+                      type="text" 
+                      name="login"
+                      value={formData.login}
+                      onChange={handleInputChange}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 px-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
+                      placeholder="Account ID" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Password / Secret</label>
+                    <input 
+                      type="password" 
+                      name="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 px-3 text-sm text-white focus:ring-1 focus:ring-primary focus:border-primary outline-none" 
+                      placeholder="••••••••" 
+                    />
+                  </div>
+                </div>
 
-            <button 
-              type="submit" 
-              disabled={connecting}
-              className={`w-full py-3 rounded-lg font-bold text-white transition-all flex items-center justify-center gap-2 mt-4 ${
-                connecting ? 'bg-gray-600 cursor-not-allowed' : 'bg-success hover:bg-green-600 shadow-lg shadow-green-900/20'
-              }`}
-            >
-              {connecting ? (
-                <span className="flex items-center gap-2">
-                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                   Fetching Balance...
-                </span>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4 fill-current" /> Connect {selectedBroker}
-                </>
-              )}
-            </button>
-            <div className="text-center">
-                 <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
-                    <CheckCircle className="w-3 h-3 text-success" /> SSL Encrypted Connection
-                 </p>
-            </div>
-          </form>
+                <button 
+                  type="submit" 
+                  disabled={connecting}
+                  className={`w-full py-3 rounded-lg font-bold text-white transition-all flex items-center justify-center gap-2 mt-4 ${
+                    connecting ? 'bg-gray-600 cursor-not-allowed' : 'bg-success hover:bg-green-600 shadow-lg shadow-green-900/20'
+                  }`}
+                >
+                  {connecting ? (
+                    <span className="flex items-center gap-2">
+                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                       Establishing Bridge...
+                    </span>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 fill-current" /> Connect {selectedBroker}
+                    </>
+                  )}
+                </button>
+                <div className="text-center">
+                     <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
+                        <CheckCircle className="w-3 h-3 text-success" /> SSL Encrypted Connection
+                     </p>
+                </div>
+              </form>
+          )}
+
+          {/* Webhook specific connect button */}
+          {(isWebhook || connectionMethod === 'webhook') && (
+               <button 
+                  onClick={handleConnect}
+                  className="w-full py-3 rounded-lg font-bold text-white transition-all flex items-center justify-center gap-2 mt-4 bg-primary hover:bg-blue-600 shadow-lg shadow-blue-900/20"
+                >
+                   {connecting ? (
+                       <span className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          Activating Listener...
+                       </span>
+                   ) : (
+                       <>
+                          <Zap className="w-4 h-4 fill-current" /> Activate Webhook Listener
+                       </>
+                   )}
+                </button>
+          )}
+
         </div>
       </div>
     </div>
   );
-};
+}
