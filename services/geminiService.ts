@@ -1,9 +1,14 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { MarketDataPoint, AnalysisResult, TradeType, BotConfig } from "../types";
 import { calculateRSI, calculateSMA, calculateMACD, calculateBollingerBands, calculateATR, calculateStochasticRSI, calculateIchimokuCloud } from "./marketService";
 
 // Helper to get formatted date
 const getCurrentTimestamp = () => new Date().toISOString();
+
+// MODULE-LEVEL STATE FOR RATE LIMITING
+// We store this outside the function so it persists between React re-renders/calls
+let apiCooldownUntil = 0;
 
 const getAIClient = () => {
   try {
@@ -34,8 +39,24 @@ export const analyzeMarket = async (
   sensitivity: string = 'MEDIUM'
 ): Promise<AnalysisResult> => {
   
-  const ai = getAIClient();
   const safePrice = dataHistory[dataHistory.length - 1]?.price || 0;
+
+  // 1. CHECK COOLDOWN
+  if (Date.now() < apiCooldownUntil) {
+      const remaining = Math.ceil((apiCooldownUntil - Date.now()) / 1000);
+      return {
+          recommendation: TradeType.HOLD,
+          confidence: 0,
+          reasoning: `API Rate Limit Active. Cooling down for ${remaining}s to prevent ban. Analysis paused.`,
+          stopLoss: safePrice,
+          takeProfit: safePrice,
+          timestamp: new Date(),
+          patterns: [],
+          marketStructure: "RATE_LIMIT"
+      };
+  }
+
+  const ai = getAIClient();
   
   // FAIL FAST: If AI client is null, return immediate system alert
   if (!ai) {
@@ -47,7 +68,7 @@ export const analyzeMarket = async (
       takeProfit: safePrice,
       timestamp: new Date(),
       patterns: [],
-      marketStructure: "OFFLINE"
+      marketStructure: "AUTH_ERR"
     };
   }
 
@@ -116,7 +137,7 @@ export const analyzeMarket = async (
     }
   `;
 
-  const attemptAnalysis = async (retries = 2): Promise<any> => {
+  const attemptAnalysis = async (retries = 1): Promise<any> => {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -144,8 +165,20 @@ export const analyzeMarket = async (
       return JSON.parse(resultText);
 
     } catch (error: any) {
-      // 1. CATCH AUTH ERRORS specifically
       const errMsg = error.message || error.toString();
+      const status = error.status || (error.error && error.error.code);
+
+      // 0. HANDLE RATE LIMITS (429)
+      if (
+          status === 429 || 
+          errMsg.includes('429') || 
+          errMsg.includes('quota') || 
+          errMsg.includes('RESOURCE_EXHAUSTED')
+      ) {
+         throw new Error("QUOTA_EXCEEDED");
+      }
+
+      // 1. CATCH AUTH ERRORS specifically
       if (
           errMsg.includes('401') || 
           errMsg.includes('403') || 
@@ -156,7 +189,7 @@ export const analyzeMarket = async (
       }
 
       // 2. Retry on Server Errors
-      if (retries > 0 && (error.status === 500 || error.status === 503 || errMsg.includes('500') || errMsg.includes('fetch'))) {
+      if (retries > 0 && (status === 500 || status === 503 || errMsg.includes('500') || errMsg.includes('fetch'))) {
         await wait(1500);
         return attemptAnalysis(retries - 1);
       }
@@ -195,6 +228,11 @@ export const analyzeMarket = async (
     if (error.message === "AUTH_FAILED") {
         reasoning = "CRITICAL: API Key Authentication Failed. Check your API Key configuration.";
         structure = "AUTH_ERR";
+    } else if (error.message === "QUOTA_EXCEEDED") {
+        // ACTIVATE COOLDOWN: 60 Seconds
+        apiCooldownUntil = Date.now() + 60000;
+        reasoning = "API Rate Limit Hit (429). Initiating 60s Cool-down Protocol.";
+        structure = "RATE_LIMIT";
     } else if (error.message === "EMPTY_RESPONSE") {
         reasoning = "AI returned empty response. Retrying next cycle.";
     }
@@ -219,6 +257,9 @@ export const chatWithAssistant = async (
 ): Promise<string> => {
   const ai = getAIClient();
   if (!ai) return "I cannot access the AI service. Please verify your API Key configuration.";
+  
+  // Basic rate limit check for chat too
+  if (Date.now() < apiCooldownUntil) return "System is currently cooling down from high traffic. Please try again in a minute.";
 
   const prompt = `
     You are Nexus, an Expert Trading Assistant.
@@ -233,7 +274,11 @@ export const chatWithAssistant = async (
       contents: prompt
     });
     return response.text || "I couldn't generate a response.";
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message?.includes('429')) {
+        apiCooldownUntil = Date.now() + 60000;
+        return "Traffic limit reached. Cooling down.";
+    }
     console.error("Chat Error:", error);
     return "I encountered an error. Please check your connection or API key.";
   }

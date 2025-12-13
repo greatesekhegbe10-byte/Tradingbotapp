@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { ShieldCheck, CreditCard, Globe, Lock, Copy, Check, Loader2, AlertCircle, Wifi, Upload, FileText, Mail, ArrowRight, Smartphone } from 'lucide-react';
+import { ShieldCheck, CreditCard, Globe, Lock, Copy, Check, Loader2, AlertCircle, Wifi, Upload, FileText, Mail, ArrowRight, Smartphone, FileCheck } from 'lucide-react';
 
 interface SubscriptionGateProps {
   onVerify: () => void;
@@ -13,6 +13,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
   const [ref, setRef] = useState('');
   const [email, setEmail] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
+  const [agreed, setAgreed] = useState(false);
   
   // Process State
   const [step, setStep] = useState<'FORM' | 'VERIFYING' | 'OTP'>('FORM');
@@ -24,6 +25,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [showToast, setShowToast] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +48,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
     if (ref.length < 8) return "Transaction Reference is too short (Min 8 chars).";
     if (!/^[a-zA-Z0-9]+$/.test(ref)) return "Reference must be alphanumeric (No spaces/symbols).";
     if (!receipt) return "Proof of payment (Receipt) upload is required.";
+    if (!agreed) return "You must certify that this transaction is authentic.";
     return null;
   };
 
@@ -95,9 +98,6 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
         setOtpInput('');
     }
   };
-
-  // Helper for final transition
-  const [isVerifying, setIsVerifying] = useState(false);
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -179,7 +179,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
         <div className="flex-1 p-8 overflow-y-auto max-h-[600px] bg-surface relative">
           
           {step === 'FORM' && (
-             <div className="animate-fade-in space-y-6">
+             <div className="animate-fade-in space-y-5">
                 <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
                     <button 
                         onClick={() => setActiveTab('local')}
@@ -264,6 +264,19 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({ onVerify }) 
                         <span className="text-xs text-gray-400">
                             {receipt ? <span className="text-green-400 font-bold">{receipt.name}</span> : "Upload Payment Receipt"}
                         </span>
+                    </div>
+
+                    {/* Strict Agreement Checkbox */}
+                    <div className="flex items-start gap-3 bg-gray-900/40 p-3 rounded-lg border border-gray-700">
+                        <div 
+                            className={`w-5 h-5 rounded border flex items-center justify-center cursor-pointer flex-shrink-0 transition-colors ${agreed ? 'bg-primary border-primary' : 'border-gray-500'}`}
+                            onClick={() => setAgreed(!agreed)}
+                        >
+                            {agreed && <Check className="w-3.5 h-3.5 text-white" />}
+                        </div>
+                        <p className="text-[10px] text-gray-400 leading-tight cursor-pointer select-none" onClick={() => setAgreed(!agreed)}>
+                            I certify that I have transferred <span className="text-white font-bold">$20.00</span> to the details above and attached genuine proof. Falsifying payment data triggers an immediate IP ban.
+                        </p>
                     </div>
 
                     {error && (
