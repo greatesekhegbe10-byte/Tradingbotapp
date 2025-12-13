@@ -274,19 +274,28 @@ const App: React.FC = () => {
     const symbol = overridePair || config.pair;
     const currentPrice = getPrice(symbol);
     
+    // Safety Guard: Invalid Price Validation
+    if (!currentPrice || currentPrice <= 0) {
+        console.warn(`Trade blocked: Invalid price for ${symbol}`);
+        if (!config.isActive) { // Only alert if manual
+             alert(`Execution Failed: Live price for ${symbol} is unavailable. Please wait for data sync.`);
+        }
+        return;
+    }
+
     const riskPct = config.riskLevel === 'LOW' ? 0.01 : config.riskLevel === 'MEDIUM' ? 0.05 : 0.10;
     const maxRiskAmount = config.balance * riskPct;
     
     const amount = parseFloat((maxRiskAmount / currentPrice).toFixed(6));
 
     if (amount <= 0) {
-        alert("Account balance too low for this risk level.");
+        if (!config.isActive) alert("Account balance too low for this risk level.");
         return;
     }
 
     const marginRequired = amount * currentPrice;
     if (marginRequired > config.balance) {
-        alert("Insufficient balance to execute this trade based on risk parameters.");
+        if (!config.isActive) alert("Insufficient balance to execute this trade based on risk parameters.");
         return;
     }
 

@@ -6,7 +6,7 @@ export const getNexusEA = (apiKey: string = "YOUR_API_KEY") => `//+-------------
 //+------------------------------------------------------------------+
 #property copyright "NexusTrade AI"
 #property link      "https://nexustrade.ai"
-#property version   "3.52"
+#property version   "3.55"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -27,6 +27,7 @@ input ENUM_MODE Bot_Mode = MODE_HYBRID;
 input string Nexus_API_Key = "${apiKey}";
 input int MagicNumber = 889900;
 input int MaxSlippage = 3;
+input int RetryAttempts = 3;
 
 input group "☁️ Cloud Connection (MetaApi)"
 input bool Use_MetaApi = false;
@@ -66,6 +67,14 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    trade.SetDeviationInPoints(MaxSlippage);
    trade.SetTypeFilling(ORDER_FILLING_IOC); // Auto-fix for filling modes
+   
+   // Pre-Check Data
+   if(!SymbolInfoInteger(Symbol(), SYMBOL_SELECT)) {
+      if(!SymbolSelect(Symbol(), true)) {
+         Print("❌ Failed to select symbol: ", Symbol());
+         return(INIT_FAILED);
+      }
+   }
    
    return(INIT_SUCCEEDED);
 }
@@ -115,6 +124,24 @@ double NormPrice(string symbol, double price) {
    return MathRound(price / tick_size) * tick_size;
 }
 
+// --- ROBUST PRICE CHECKER ---
+bool CheckPrice(string symbol, double &bid, double &ask) {
+   for(int i=0; i<RetryAttempts; i++) {
+      if(SymbolInfoTick(symbol, tick)) {
+         if(tick.bid > 0 && tick.ask > 0) {
+            bid = tick.bid;
+            ask = tick.ask;
+            return true;
+         }
+      }
+      Sleep(100); // Wait 100ms before retry
+   }
+   Print("❌ FAILED to get valid price for ", symbol, " after ", RetryAttempts, " attempts.");
+   return false;
+}
+
+MqlTick tick; // Global tick structure
+
 //----------------------- SIGNAL LOGIC ------------------------------//
 
 void ScanMarket(string symbol) {
@@ -150,11 +177,18 @@ void ScanMarket(string symbol) {
 }
 
 void OpenTrade(string symbol, ENUM_ORDER_TYPE type) {
+   // Validate Symbol Selection
    if(PositionSelect(symbol)) return; // One trade per pair
    
-   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+   double ask=0, bid=0;
+   
+   // --- SAFETY GUARD: Check Price Before Execution ---
+   if(!CheckPrice(symbol, bid, ask)) return; 
+   
    double price = (type == ORDER_TYPE_BUY) ? ask : bid;
+   
+   // Double check invalid price
+   if(price <= 0 || price == EMPTY_VALUE) return;
    
    double slPoints = 500 * _Point; // Example fixed SL
    double tpPoints = 1000 * _Point;
@@ -180,8 +214,6 @@ void OpenTrade(string symbol, ENUM_ORDER_TYPE type) {
    int err = GetLastError();
    if(err != 0 && err != 10009) { // Ignore 'Request Completed'
        Print("⚠️ Trade Error: ", err, " Symbol: ", symbol);
-       // Auto-Fix attempt: Refresh rates and retry once?
-       // Simplest fix: Just log it.
    }
 }
 
@@ -189,6 +221,9 @@ void OpenTrade(string symbol, ENUM_ORDER_TYPE type) {
 void OnTick()
 {
    if(!IsTradeAllowed()) return;
+   
+   // Ensure connection
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return;
 
    // Bridge Sync Check
    static datetime lastSync = 0;

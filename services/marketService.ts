@@ -6,19 +6,19 @@ const PAIR_CONFIGS: Record<string, { price: number, volatility: number, decimals
   // Majors
   'EUR/USD': { price: 1.0820, volatility: 0.00015, decimals: 5 },
   'GBP/USD': { price: 1.2950, volatility: 0.0002, decimals: 5 },
-  'USD/JPY': { price: 153.40, volatility: 0.04, decimals: 3 }, // Updated from 155.50
+  'USD/JPY': { price: 153.40, volatility: 0.04, decimals: 3 },
   'AUD/USD': { price: 0.6580, volatility: 0.0002, decimals: 5 },
   'NZD/USD': { price: 0.5980, volatility: 0.0002, decimals: 5 },
   'USD/CAD': { price: 1.3910, volatility: 0.0002, decimals: 5 },
   'USD/CHF': { price: 0.8650, volatility: 0.0002, decimals: 5 },
   
   // Commodities
-  'XAU/USD': { price: 2745.50, volatility: 1.5, decimals: 2 }, // Gold updated
+  'XAU/USD': { price: 2745.50, volatility: 1.5, decimals: 2 },
   'WTI/USD': { price: 71.50, volatility: 0.4, decimals: 2 }, 
   'BRENT/USD': { price: 75.20, volatility: 0.4, decimals: 2 },
 
   // Crypto
-  'BTC/USD': { price: 72150.00, volatility: 35, decimals: 2 }, // BTC updated
+  'BTC/USD': { price: 72150.00, volatility: 35, decimals: 2 },
   'ETH/USD': { price: 2650.00, volatility: 8, decimals: 2 },
   'SOL/USD': { price: 175.50, volatility: 0.5, decimals: 2 },
 
@@ -74,72 +74,84 @@ const priceMomentum: Record<string, number> = {
   ...Object.keys(PAIR_CONFIGS).reduce((acc, key) => ({...acc, [key]: 0}), {})
 };
 
-// Function to fetch REAL market prices from public APIs
-// Fixed: Using Promise.allSettled and independent try-catch blocks to prevents one failure from halting the sync.
+// --- ROBUST FETCHING LOGIC ---
+
+// Helper: Fetch with Exponential Backoff
+const fetchWithRetry = async (url: string, retries = 3, initialDelay = 1000): Promise<any> => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout per attempt
+      
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      if (i === retries - 1) throw error; // Throw on last attempt
+      // Wait before retrying: 1s, 2s, 4s...
+      await new Promise(resolve => setTimeout(resolve, initialDelay * Math.pow(2, i)));
+    }
+  }
+};
+
 export const fetchLivePrices = async () => {
   const fetchForex = async () => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s Timeout
+      const forexData = await fetchWithRetry('https://open.er-api.com/v6/latest/USD');
       
-      const response = await fetch('https://open.er-api.com/v6/latest/USD', { signal: controller.signal });
-      clearTimeout(timeoutId);
+      // Validate Data Structure
+      if (!forexData || !forexData.rates) throw new Error("Invalid Forex Data Structure");
 
-      if (!response.ok) return;
+      const rates = forexData.rates;
+      if (rates.JPY) currentPrices['USD/JPY'] = rates.JPY;
+      if (rates.CAD) currentPrices['USD/CAD'] = rates.CAD;
+      if (rates.CHF) currentPrices['USD/CHF'] = rates.CHF;
+      if (rates.SGD) currentPrices['USD/SGD'] = rates.SGD;
+      if (rates.ZAR) currentPrices['USD/ZAR'] = rates.ZAR;
+      if (rates.SEK) currentPrices['USD/SEK'] = rates.SEK;
+      if (rates.NOK) currentPrices['USD/NOK'] = rates.NOK;
+      if (rates.MXN) currentPrices['USD/MXN'] = rates.MXN;
+      
+      // Cross Rates & Inversions
+      if (rates.EUR) currentPrices['EUR/USD'] = 1 / rates.EUR;
+      if (rates.GBP) currentPrices['GBP/USD'] = 1 / rates.GBP;
+      if (rates.AUD) currentPrices['AUD/USD'] = 1 / rates.AUD;
+      if (rates.NZD) currentPrices['NZD/USD'] = 1 / rates.NZD;
+      
+      // Crosses
+      if (rates.EUR && rates.JPY) currentPrices['EUR/JPY'] = rates.JPY / rates.EUR;
+      if (rates.GBP && rates.JPY) currentPrices['GBP/JPY'] = rates.JPY / rates.GBP;
+      if (rates.EUR && rates.GBP) currentPrices['EUR/GBP'] = rates.GBP / rates.EUR;
 
-      const forexData = await response.json();
-
-      if (forexData && forexData.rates) {
-        if (forexData.rates.JPY) currentPrices['USD/JPY'] = forexData.rates.JPY;
-        if (forexData.rates.CAD) currentPrices['USD/CAD'] = forexData.rates.CAD;
-        if (forexData.rates.CHF) currentPrices['USD/CHF'] = forexData.rates.CHF;
-        if (forexData.rates.SGD) currentPrices['USD/SGD'] = forexData.rates.SGD;
-        if (forexData.rates.ZAR) currentPrices['USD/ZAR'] = forexData.rates.ZAR;
-        if (forexData.rates.SEK) currentPrices['USD/SEK'] = forexData.rates.SEK;
-        if (forexData.rates.NOK) currentPrices['USD/NOK'] = forexData.rates.NOK;
-        if (forexData.rates.MXN) currentPrices['USD/MXN'] = forexData.rates.MXN;
-        
-        if (forexData.rates.EUR) currentPrices['EUR/USD'] = 1 / forexData.rates.EUR;
-        if (forexData.rates.GBP) currentPrices['GBP/USD'] = 1 / forexData.rates.GBP;
-        if (forexData.rates.AUD) currentPrices['AUD/USD'] = 1 / forexData.rates.AUD;
-        if (forexData.rates.NZD) currentPrices['NZD/USD'] = 1 / forexData.rates.NZD;
-
-        if (forexData.rates.EUR && forexData.rates.JPY) currentPrices['EUR/JPY'] = forexData.rates.JPY / forexData.rates.EUR;
-        if (forexData.rates.GBP && forexData.rates.JPY) currentPrices['GBP/JPY'] = forexData.rates.JPY / forexData.rates.GBP;
-        if (forexData.rates.EUR && forexData.rates.GBP) currentPrices['EUR/GBP'] = forexData.rates.GBP / forexData.rates.EUR;
-      }
     } catch (error) {
-       // Silent fail for smooth UX
+       // Silent fail to Fallback Engine (PAIR_CONFIGS)
     }
   };
 
   const fetchCrypto = async () => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s Timeout
-
-      const response = await fetch('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana', { signal: controller.signal });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) return;
+      const cryptoData = await fetchWithRetry('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
       
-      const cryptoData = await response.json();
+      // Validate Data Structure
+      if (!cryptoData || !cryptoData.data || !Array.isArray(cryptoData.data)) throw new Error("Invalid Crypto Data Structure");
 
-      if (cryptoData && cryptoData.data) {
-         cryptoData.data.forEach((asset: any) => {
-            const price = parseFloat(asset.priceUsd);
+      cryptoData.data.forEach((asset: any) => {
+          const price = parseFloat(asset.priceUsd);
+          if (!isNaN(price) && price > 0) {
             if (asset.id === 'bitcoin') currentPrices['BTC/USD'] = price;
             if (asset.id === 'ethereum') currentPrices['ETH/USD'] = price;
             if (asset.id === 'solana') currentPrices['SOL/USD'] = price;
-         });
-      }
+          }
+      });
     } catch (error) {
-       // Silent fail for smooth UX
+       // Silent fail to Fallback Engine (PAIR_CONFIGS)
     }
   };
 
+  // Run in parallel, settling independently
   await Promise.allSettled([fetchForex(), fetchCrypto()]);
-  console.log("Live price sync attempt completed.");
 };
 
 export const getPairDetails = (pair: string) => {
