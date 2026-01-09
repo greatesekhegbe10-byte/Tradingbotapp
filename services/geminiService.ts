@@ -3,32 +3,23 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { MarketDataPoint, AnalysisResult, TradeType, BotConfig } from "../types";
 import { calculateRSI, calculateSMA, calculateMACD, calculateBollingerBands, calculateATR, calculateStochasticRSI, calculateIchimokuCloud } from "./marketService";
 
-// Helper to get formatted date
-const getCurrentTimestamp = () => new Date().toISOString();
-
 // MODULE-LEVEL STATE FOR RATE LIMITING
-// We store this outside the function so it persists between React re-renders/calls
 let apiCooldownUntil = 0;
 
 const getAIClient = () => {
   try {
-    // Robust check for environment variable
-    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-      const key = process.env.API_KEY;
-      // Basic format check (Google Keys usually start with AIza)
-      if (key.length > 10 && !key.includes("YOUR_API_KEY")) {
-         return new GoogleGenAI({ apiKey: key });
-      }
+    const apiKey = process.env.API_KEY;
+    if (apiKey && apiKey.length > 10 && !apiKey.includes("YOUR_API_KEY")) {
+      return new GoogleGenAI({ apiKey });
     }
-    console.warn("API Key missing or invalid format in process.env");
+    console.warn("NexusTrade: API Key missing or invalid.");
     return null;
   } catch (e) {
-    console.error("Critical Error accessing API key context:", e);
+    console.error("NexusTrade: Critical Error accessing API context:", e);
     return null;
   }
 }
 
-// Helper for delay
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const analyzeMarket = async (
@@ -41,29 +32,26 @@ export const analyzeMarket = async (
   
   const safePrice = dataHistory[dataHistory.length - 1]?.price || 0;
 
-  // 1. CHECK COOLDOWN
   if (Date.now() < apiCooldownUntil) {
-      const remaining = Math.ceil((apiCooldownUntil - Date.now()) / 1000);
-      return {
-          recommendation: TradeType.HOLD,
-          confidence: 0,
-          reasoning: `API Rate Limit Active. Cooling down for ${remaining}s to prevent ban. Analysis paused.`,
-          stopLoss: safePrice,
-          takeProfit: safePrice,
-          timestamp: new Date(),
-          patterns: [],
-          marketStructure: "RATE_LIMIT"
-      };
+    const remaining = Math.ceil((apiCooldownUntil - Date.now()) / 1000);
+    return {
+      recommendation: TradeType.HOLD,
+      confidence: 0,
+      reasoning: `API Rate Limit Active. Cooling down for ${remaining}s. Analysis paused.`,
+      stopLoss: safePrice,
+      takeProfit: safePrice,
+      timestamp: new Date(),
+      patterns: [],
+      marketStructure: "RATE_LIMIT"
+    };
   }
 
   const ai = getAIClient();
-  
-  // FAIL FAST: If AI client is null, return immediate system alert
   if (!ai) {
     return {
       recommendation: TradeType.HOLD,
       confidence: 0,
-      reasoning: "SYSTEM ALERT: API Key is missing or invalid. Bot halted for safety. Please check settings.",
+      reasoning: "SYSTEM ALERT: API Key is missing. Bot halted for safety.",
       stopLoss: safePrice,
       takeProfit: safePrice,
       timestamp: new Date(),
@@ -72,7 +60,6 @@ export const analyzeMarket = async (
     };
   }
 
-  // Calculate Technical Indicators
   const recentData = dataHistory.slice(-50); 
   const currentPrice = recentData[recentData.length - 1].price;
   
@@ -85,64 +72,39 @@ export const analyzeMarket = async (
   const stochRsi = calculateStochasticRSI(recentData);
   const ichimoku = calculateIchimokuCloud(recentData);
 
-  // Format indicators for prompt
   const technicals = `
-    Price: ${currentPrice}
-    RSI (14): ${rsi ? rsi.toFixed(2) : 'N/A'}
-    Stochastic RSI: ${stochRsi ? `K: ${stochRsi.k.toFixed(2)}, D: ${stochRsi.d.toFixed(2)}` : 'N/A'}
-    SMA (7): ${smaShort ? smaShort.toFixed(2) : 'N/A'}
-    SMA (20): ${smaLong ? smaLong.toFixed(2) : 'N/A'}
-    MACD: ${macd ? `Hist: ${macd.histogram.toFixed(4)}, Line: ${macd.macdLine.toFixed(4)}, Signal: ${macd.signalLine.toFixed(4)}` : 'N/A'}
-    Bollinger: ${bands ? `Upper: ${bands.upper.toFixed(2)}, Lower: ${bands.lower.toFixed(2)}` : 'N/A'}
-    Ichimoku: ${ichimoku ? `Above Cloud: ${ichimoku.isAboveCloud}, Below Cloud: ${ichimoku.isBelowCloud}` : 'N/A'}
-    ATR: ${atr ? atr.toFixed(4) : 'N/A'}
+    Pair: ${pair} | Price: ${currentPrice}
+    RSI: ${rsi?.toFixed(2) || 'N/A'} | StochRSI K: ${stochRsi?.k.toFixed(2) || 'N/A'}
+    SMA7: ${smaShort?.toFixed(2) || 'N/A'} | SMA20: ${smaLong?.toFixed(2) || 'N/A'}
+    MACD Hist: ${macd?.histogram.toFixed(4) || 'N/A'}
+    Bollinger Upper: ${bands?.upper.toFixed(2) || 'N/A'} | Lower: ${bands?.lower.toFixed(2) || 'N/A'}
+    Ichimoku Above Cloud: ${ichimoku?.isAboveCloud}
   `;
   
   const prompt = `
-    You are an Expert Crypto & Forex Trading AI (EEA Engine).
-    Analyze the following market data for ${pair}.
+    Analyze ${pair} with these parameters:
+    Balance: $${currentBalance} | Risk: ${riskLevel} | Sensitivity: ${sensitivity}
     
-    User Settings:
-    - Balance: ${currentBalance}
-    - Risk Level: ${riskLevel}
-    - Signal Sensitivity: ${sensitivity}
-    
-    Current Price: ${currentPrice}
-    
-    Technical Indicators:
+    Data:
     ${technicals}
-    
-    Recent Price History (Last 10 candles): ${JSON.stringify(recentData.slice(-10).map(d => d.price))}
-    
-    Task:
-    1. Identify Candlestick Patterns.
-    2. Determine Market Structure.
-    3. Analyze Indicator Divergences.
-    4. Provide a Trade Recommendation (BUY, SELL, HOLD).
-    5. Calculate precise Stop Loss (SL) and Take Profit (TP).
-    
-    Strict Rules:
-    - Confidence must be > 85% for signals.
-    - If data is ambiguous, return HOLD.
-    
-    Output strictly in JSON format matching this schema:
-    {
-      "recommendation": "BUY" | "SELL" | "HOLD",
-      "confidence": number (0-100),
-      "reasoning": "string",
-      "stopLoss": number,
-      "takeProfit": number,
-      "patterns": ["string"],
-      "marketStructure": "string"
-    }
+    Recent History: ${JSON.stringify(recentData.slice(-10).map(d => d.price))}
   `;
+
+  const systemInstruction = `You are the Nexus EEA (Expert Electronic Assistant) trading engine. 
+  Your goal is to provide high-precision trade signals (BUY, SELL, HOLD). 
+  Analyze candlestick patterns, market structure (Bullish, Bearish, Ranging), and indicator divergences. 
+  Rules: 
+  - Confidence > 85% required for BUY/SELL. 
+  - Calculate SL/TP based on ATR and recent volatility. 
+  - Output ONLY valid JSON.`;
 
   const attemptAnalysis = async (retries = 1): Promise<any> => {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-pro-preview",
         contents: prompt,
         config: {
+          systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -163,34 +125,12 @@ export const analyzeMarket = async (
       const resultText = response.text;
       if (!resultText) throw new Error("EMPTY_RESPONSE");
       return JSON.parse(resultText);
-
     } catch (error: any) {
-      const errMsg = error.message || error.toString();
-      const status = error.status || (error.error && error.error.code);
-
-      // 0. HANDLE RATE LIMITS (429)
-      if (
-          status === 429 || 
-          errMsg.includes('429') || 
-          errMsg.includes('quota') || 
-          errMsg.includes('RESOURCE_EXHAUSTED')
-      ) {
-         throw new Error("QUOTA_EXCEEDED");
-      }
-
-      // 1. CATCH AUTH ERRORS specifically
-      if (
-          errMsg.includes('401') || 
-          errMsg.includes('403') || 
-          errMsg.includes('API key') ||
-          errMsg.includes('permission')
-      ) {
-         throw new Error("AUTH_FAILED");
-      }
-
-      // 2. Retry on Server Errors
-      if (retries > 0 && (status === 500 || status === 503 || errMsg.includes('500') || errMsg.includes('fetch'))) {
-        await wait(1500);
+      const errMsg = error.message || "";
+      if (errMsg.includes('429') || errMsg.includes('quota')) throw new Error("QUOTA_EXCEEDED");
+      if (errMsg.includes('401') || errMsg.includes('403')) throw new Error("AUTH_FAILED");
+      if (retries > 0) {
+        await wait(1000);
         return attemptAnalysis(retries - 1);
       }
       throw error;
@@ -199,17 +139,15 @@ export const analyzeMarket = async (
 
   try {
     const parsed = await attemptAnalysis();
-    
     const threshold = sensitivity === 'HIGH' ? 80 : 85;
 
-    // Safety Filter
-    if (parsed.confidence <= threshold && parsed.recommendation !== "HOLD") {
-        parsed.recommendation = "HOLD";
-        parsed.reasoning = `Confidence (${parsed.confidence}%) low. Defaulting to HOLD. ${parsed.reasoning}`;
+    if (parsed.confidence < threshold && parsed.recommendation !== "HOLD") {
+      parsed.recommendation = "HOLD";
+      parsed.reasoning = `Confidence ${parsed.confidence}% is below sensitivity threshold. ${parsed.reasoning}`;
     }
 
     return {
-      recommendation: parsed.recommendation === "BUY" ? TradeType.BUY : parsed.recommendation === "SELL" ? TradeType.SELL : TradeType.HOLD,
+      recommendation: parsed.recommendation as TradeType,
       confidence: parsed.confidence,
       reasoning: parsed.reasoning,
       stopLoss: parsed.stopLoss,
@@ -218,29 +156,21 @@ export const analyzeMarket = async (
       patterns: parsed.patterns || [],
       marketStructure: parsed.marketStructure || 'Neutral'
     };
-
   } catch (error: any) {
-    console.error("Gemini Analysis Final Fail:", error);
+    console.error("Gemini Analysis Failure:", error);
+    let structure = "ERR";
+    let reasoning = "Analysis engine offline.";
     
-    let reasoning = "Market analysis temporarily unavailable.";
-    let structure = "Unknown";
-    
-    if (error.message === "AUTH_FAILED") {
-        reasoning = "CRITICAL: API Key Authentication Failed. Check your API Key configuration.";
-        structure = "AUTH_ERR";
-    } else if (error.message === "QUOTA_EXCEEDED") {
-        // ACTIVATE COOLDOWN: 60 Seconds
-        apiCooldownUntil = Date.now() + 60000;
-        reasoning = "API Rate Limit Hit (429). Initiating 60s Cool-down Protocol.";
-        structure = "RATE_LIMIT";
-    } else if (error.message === "EMPTY_RESPONSE") {
-        reasoning = "AI returned empty response. Retrying next cycle.";
+    if (error.message === "QUOTA_EXCEEDED") {
+      apiCooldownUntil = Date.now() + 60000;
+      structure = "RATE_LIMIT";
+      reasoning = "API limit reached. Syncing cooldown...";
     }
 
     return {
       recommendation: TradeType.HOLD,
       confidence: 0,
-      reasoning: reasoning,
+      reasoning,
       stopLoss: safePrice,
       takeProfit: safePrice,
       timestamp: new Date(),
@@ -256,30 +186,19 @@ export const chatWithAssistant = async (
   config: BotConfig
 ): Promise<string> => {
   const ai = getAIClient();
-  if (!ai) return "I cannot access the AI service. Please verify your API Key configuration.";
-  
-  // Basic rate limit check for chat too
-  if (Date.now() < apiCooldownUntil) return "System is currently cooling down from high traffic. Please try again in a minute.";
-
-  const prompt = `
-    You are Nexus, an Expert Trading Assistant.
-    Context: ${marketContext}
-    User: "${message}"
-    Provide a concise trading insight or platform help.
-  `;
+  if (!ai) return "AI service unavailable. Check API configuration.";
+  if (Date.now() < apiCooldownUntil) return "System cooling down. Please wait.";
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt
+      model: "gemini-3-pro-preview",
+      contents: message,
+      config: {
+        systemInstruction: `You are Nexus, a helpful crypto and forex trading assistant. Context: ${marketContext}. Keep responses concise and focused on trading data.`
+      }
     });
-    return response.text || "I couldn't generate a response.";
+    return response.text || "No response received.";
   } catch (error: any) {
-    if (error.message?.includes('429')) {
-        apiCooldownUntil = Date.now() + 60000;
-        return "Traffic limit reached. Cooling down.";
-    }
-    console.error("Chat Error:", error);
-    return "I encountered an error. Please check your connection or API key.";
+    return "I encountered a communication error. Please try again.";
   }
 };
