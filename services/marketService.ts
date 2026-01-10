@@ -1,355 +1,126 @@
 
-import { MarketDataPoint } from '../types';
+import { 
+  Trade, TradeType, UserProfile, BotConfig, PAIR_CONFIGS, MarketDataPoint, 
+  SignalBreakdown, AnalysisResult, SignalMode 
+} from '../types';
 
-// Updated Fallback Configurations (Approximate Real Market Values as of Late 2024/Early 2025)
-const PAIR_CONFIGS: Record<string, { price: number, volatility: number, decimals: number }> = {
-  // Majors
-  'EUR/USD': { price: 1.0820, volatility: 0.00015, decimals: 5 },
-  'GBP/USD': { price: 1.2950, volatility: 0.0002, decimals: 5 },
-  'USD/JPY': { price: 153.40, volatility: 0.04, decimals: 3 },
-  'AUD/USD': { price: 0.6580, volatility: 0.0002, decimals: 5 },
-  'NZD/USD': { price: 0.5980, volatility: 0.0002, decimals: 5 },
-  'USD/CAD': { price: 1.3910, volatility: 0.0002, decimals: 5 },
-  'USD/CHF': { price: 0.8650, volatility: 0.0002, decimals: 5 },
-  
-  // Commodities
-  'XAU/USD': { price: 2745.50, volatility: 1.5, decimals: 2 },
-  'WTI/USD': { price: 71.50, volatility: 0.4, decimals: 2 }, 
-  'BRENT/USD': { price: 75.20, volatility: 0.4, decimals: 2 },
+export const getPairDetails = (pair: string) => PAIR_CONFIGS[pair] || PAIR_CONFIGS['EUR/USD'];
 
-  // Crypto
-  'BTC/USD': { price: 72150.00, volatility: 35, decimals: 2 },
-  'ETH/USD': { price: 2650.00, volatility: 8, decimals: 2 },
-  'SOL/USD': { price: 175.50, volatility: 0.5, decimals: 2 },
-
-  // Minors / Crosses
-  'GBP/JPY': { price: 198.80, volatility: 0.06, decimals: 3 },
-  'EUR/JPY': { price: 166.10, volatility: 0.05, decimals: 3 },
-  'EUR/GBP': { price: 0.8350, volatility: 0.00015, decimals: 5 },
-  'GBP/CAD': { price: 1.8010, volatility: 0.0002, decimals: 5 },
-  'CAD/JPY': { price: 110.20, volatility: 0.04, decimals: 3 },
-  'AUD/JPY': { price: 100.90, volatility: 0.04, decimals: 3 },
-  'NZD/JPY': { price: 91.70, volatility: 0.04, decimals: 3 },
-  'EUR/CHF': { price: 0.9360, volatility: 0.00015, decimals: 5 },
-  'GBP/CHF': { price: 1.1210, volatility: 0.0002, decimals: 5 },
-  'CAD/CHF': { price: 0.6220, volatility: 0.0002, decimals: 5 },
-  'AUD/CAD': { price: 0.9150, volatility: 0.0002, decimals: 5 },
-  'AUD/NZD': { price: 1.1000, volatility: 0.0002, decimals: 5 },
-  'NZD/CAD': { price: 0.8320, volatility: 0.0002, decimals: 5 },
-  'CHF/JPY': { price: 177.30, volatility: 0.05, decimals: 3 },
-  'EUR/CAD': { price: 1.5050, volatility: 0.0002, decimals: 5 },
-  'EUR/AUD': { price: 1.6440, volatility: 0.0002, decimals: 5 },
-  'EUR/NZD': { price: 1.8090, volatility: 0.0002, decimals: 5 },
-  'EUR/SEK': { price: 11.5800, volatility: 0.002, decimals: 4 },
-  'EUR/SGD': { price: 1.4320, volatility: 0.0002, decimals: 5 },
-  'GBP/SEK': { price: 13.8500, volatility: 0.002, decimals: 4 },
-  'GBP/NZD': { price: 2.1650, volatility: 0.0003, decimals: 5 },
-  'AUD/SGD': { price: 0.8710, volatility: 0.0002, decimals: 5 },
-  'AUD/CHF': { price: 0.5690, volatility: 0.0002, decimals: 5 },
-  'NZD/CHF': { price: 0.5170, volatility: 0.0002, decimals: 5 },
-  'SGD/JPY': { price: 115.80, volatility: 0.04, decimals: 3 },
-  'HKD/JPY': { price: 19.72, volatility: 0.01, decimals: 3 },
-  'NOK/JPY': { price: 13.95, volatility: 0.01, decimals: 3 },
-  'SEK/JPY': { price: 14.33, volatility: 0.01, decimals: 3 },
-  
-  // Exotics
-  'USD/NOK': { price: 10.9500, volatility: 0.002, decimals: 4 },
-  'USD/SEK': { price: 10.6500, volatility: 0.002, decimals: 4 },
-  'USD/ZAR': { price: 17.6500, volatility: 0.005, decimals: 4 },
-  'USD/HKD': { price: 7.7700, volatility: 0.0005, decimals: 4 },
-  'USD/TRY': { price: 34.2500, volatility: 0.01, decimals: 4 },
-  'USD/MXN': { price: 20.1500, volatility: 0.005, decimals: 4 },
-  'USD/SGD': { price: 1.3230, volatility: 0.0002, decimals: 5 },
-  'USD/PLN': { price: 4.0100, volatility: 0.001, decimals: 4 },
-  'USD/HUF': { price: 375.50, volatility: 0.1, decimals: 2 },
-};
-
-// Store current price state for all pairs
-const currentPrices: Record<string, number> = { 
-  ...Object.keys(PAIR_CONFIGS).reduce((acc, key) => ({...acc, [key]: PAIR_CONFIGS[key].price}), {}) 
-};
-
-// Store trend momentum for more realistic movements
-const priceMomentum: Record<string, number> = {
-  ...Object.keys(PAIR_CONFIGS).reduce((acc, key) => ({...acc, [key]: 0}), {})
-};
-
-// --- ROBUST FETCHING LOGIC ---
-
-// Helper: Fetch with Exponential Backoff
-const fetchWithRetry = async (url: string, retries = 3, initialDelay = 1000): Promise<any> => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout per attempt
-      
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      if (i === retries - 1) throw error; // Throw on last attempt
-      // Wait before retrying: 1s, 2s, 4s...
-      await new Promise(resolve => setTimeout(resolve, initialDelay * Math.pow(2, i)));
-    }
-  }
-};
-
-export const fetchLivePrices = async () => {
-  const fetchForex = async () => {
-    try {
-      const forexData = await fetchWithRetry('https://open.er-api.com/v6/latest/USD');
-      
-      // Validate Data Structure
-      if (!forexData || !forexData.rates) throw new Error("Invalid Forex Data Structure");
-
-      const rates = forexData.rates;
-      if (rates.JPY) currentPrices['USD/JPY'] = rates.JPY;
-      if (rates.CAD) currentPrices['USD/CAD'] = rates.CAD;
-      if (rates.CHF) currentPrices['USD/CHF'] = rates.CHF;
-      if (rates.SGD) currentPrices['USD/SGD'] = rates.SGD;
-      if (rates.ZAR) currentPrices['USD/ZAR'] = rates.ZAR;
-      if (rates.SEK) currentPrices['USD/SEK'] = rates.SEK;
-      if (rates.NOK) currentPrices['USD/NOK'] = rates.NOK;
-      if (rates.MXN) currentPrices['USD/MXN'] = rates.MXN;
-      
-      // Cross Rates & Inversions
-      if (rates.EUR) currentPrices['EUR/USD'] = 1 / rates.EUR;
-      if (rates.GBP) currentPrices['GBP/USD'] = 1 / rates.GBP;
-      if (rates.AUD) currentPrices['AUD/USD'] = 1 / rates.AUD;
-      if (rates.NZD) currentPrices['NZD/USD'] = 1 / rates.NZD;
-      
-      // Crosses
-      if (rates.EUR && rates.JPY) currentPrices['EUR/JPY'] = rates.JPY / rates.EUR;
-      if (rates.GBP && rates.JPY) currentPrices['GBP/JPY'] = rates.JPY / rates.GBP;
-      if (rates.EUR && rates.GBP) currentPrices['EUR/GBP'] = rates.GBP / rates.EUR;
-
-    } catch (error) {
-       // Silent fail to Fallback Engine (PAIR_CONFIGS)
-    }
-  };
-
-  const fetchCrypto = async () => {
-    try {
-      const cryptoData = await fetchWithRetry('https://api.coincap.io/v2/assets?ids=bitcoin,ethereum,solana');
-      
-      // Validate Data Structure
-      if (!cryptoData || !cryptoData.data || !Array.isArray(cryptoData.data)) throw new Error("Invalid Crypto Data Structure");
-
-      cryptoData.data.forEach((asset: any) => {
-          const price = parseFloat(asset.priceUsd);
-          if (!isNaN(price) && price > 0) {
-            if (asset.id === 'bitcoin') currentPrices['BTC/USD'] = price;
-            if (asset.id === 'ethereum') currentPrices['ETH/USD'] = price;
-            if (asset.id === 'solana') currentPrices['SOL/USD'] = price;
-          }
-      });
-    } catch (error) {
-       // Silent fail to Fallback Engine (PAIR_CONFIGS)
-    }
-  };
-
-  // Run in parallel, settling independently
-  await Promise.allSettled([fetchForex(), fetchCrypto()]);
-};
-
-export const getPairDetails = (pair: string) => {
-  return PAIR_CONFIGS[pair] || PAIR_CONFIGS['BTC/USD'];
-};
+const priceState: Record<string, number> = {};
 
 export const getPrice = (pair: string): number => {
-  return currentPrices[pair] || PAIR_CONFIGS[pair]?.price || PAIR_CONFIGS['BTC/USD'].price;
-};
-
-// --- Technical Analysis Helpers ---
-
-export const calculateSMA = (data: MarketDataPoint[], period: number): number | null => {
-  if (data.length < period) return null;
-  const slice = data.slice(-period);
-  const sum = slice.reduce((acc, val) => acc + val.price, 0);
-  return sum / period;
-};
-
-export const calculateRSI = (data: MarketDataPoint[], period: number = 14): number | null => {
-  if (data.length < period + 1) return null;
-  
-  let gains = 0;
-  let losses = 0;
-
-  for (let i = data.length - period; i < data.length; i++) {
-    const change = data[i].price - data[i - 1].price;
-    if (change > 0) gains += change;
-    else losses += Math.abs(change);
+  if (!priceState[pair]) {
+    const defaults: Record<string, number> = {
+      'BTC/USD': 65000,
+      'ETH/USD': 3500,
+      'XAU/USD': 2350,
+      'NAS100': 18000,
+      'US30': 39000,
+      'GER40': 18500,
+      'HK50': 19500,
+      'SOL/USD': 145,
+      'EUR/USD': 1.0850,
+      'USD/JPY': 155.00,
+      'GBP/USD': 1.2650,
+      'USD/ZAR': 18.50,
+      'USD/MXN': 17.20
+    };
+    priceState[pair] = defaults[pair] || 1.1200;
   }
-
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
-
-  if (avgLoss === 0) return 100;
   
-  const rs = avgGain / avgLoss;
-  return 100 - (100 / (1 + rs));
+  let volatility = 0.0002;
+  if (pair.includes('BTC') || pair.includes('ETH')) volatility = 40.0;
+  else if (pair.includes('SOL') || pair.includes('LINK')) volatility = 0.5;
+  else if (pair.includes('NAS') || pair.includes('US30') || pair.includes('GER') || pair.includes('HK')) volatility = 15.0;
+  else if (pair.includes('XAU')) volatility = 1.5;
+  else if (pair.includes('JPY')) volatility = 0.08;
+  else if (pair.includes('ZAR') || pair.includes('MXN')) volatility = 0.01;
+
+  const change = (Math.random() - 0.5) * 2 * volatility;
+  priceState[pair] += change;
+  return priceState[pair];
 };
 
-const calculateEMA = (data: MarketDataPoint[], period: number): number[] => {
-  const k = 2 / (period + 1);
-  const emaArray: number[] = [];
-  let ema = data[0].price;
-  
-  for(let i=0; i<period && i<data.length; i++) {
-     ema += data[i].price;
+export const generateMarketData = (pair: string): MarketDataPoint => ({
+  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+  price: getPrice(pair),
+  volume: Math.floor(Math.random() * 10000 + 5000)
+});
+
+export class SignalEngine {
+  static evaluate(analysis: AnalysisResult, config: BotConfig): SignalBreakdown {
+    let isBlocked = false;
+    let blockReason = '';
+
+    // 1. Confidence Threshold
+    if (analysis.confidence < config.minConfidence) {
+      isBlocked = true;
+      blockReason = 'CONFIDENCE_BELOW_MIN_THRESHOLD';
+    }
+
+    // 2. Quality Signal Filter: Confirmation Protocol (Min 2 Confirmations)
+    if (!analysis.confirmations || analysis.confirmations.length < 2) {
+      isBlocked = true;
+      blockReason = 'INSUFFICIENT_TECHNICAL_CONFIRMATIONS';
+    }
+
+    // 3. Volatility Guard
+    if (analysis.volatility === 'HIGH' && config.signalMode === 'CONSERVATIVE' && analysis.confidence < 90) {
+      isBlocked = true;
+      blockReason = 'CONSERVATIVE_VOLATILITY_GUARD';
+    }
+
+    return {
+      primarySignal: analysis.primarySignal || 'NEURAL_CONFLUENCE',
+      confirmations: analysis.confirmations || [],
+      filtersPassed: ['SPREAD_CHECK', 'LIQUIDITY_AUDIT', 'NODE_SYNC'],
+      score: analysis.confidence,
+      isBlocked,
+      blockReason
+    };
   }
-  ema = ema / period;
-  emaArray.push(ema);
+}
 
-  for (let i = period; i < data.length; i++) {
-    ema = (data[i].price * k) + (ema * (1 - k));
-    emaArray.push(ema);
+export class RiskManager {
+  static canTrade(user: UserProfile, config: BotConfig, signal: SignalBreakdown): { allowed: boolean; reason?: string } {
+    // Global Killswitch
+    if (config.killSwitch) return { allowed: false, reason: 'GLOBAL_KILLSWITCH_ACTIVE' };
+    
+    // Signal Quality Block
+    if (signal.isBlocked) return { allowed: false, reason: signal.blockReason };
+    
+    // Drawdown Protection
+    if (user.stats.drawdown > config.maxDrawdown) return { allowed: false, reason: 'MAX_DRAWDOWN_BREACHED' };
+
+    // Session Cap
+    if (user.stats.sessionTrades >= config.maxTradesPerSession) return { allowed: false, reason: 'SESSION_TRADE_LIMIT_REACHED' };
+    
+    // Cooldown
+    if (user.stats.lastTradeTime) {
+      const diffMs = Date.now() - new Date(user.stats.lastTradeTime).getTime();
+      if (diffMs < config.coolDownMinutes * 60000) return { allowed: false, reason: 'COOLDOWN_ACTIVE' };
+    }
+
+    // Liquidity
+    if (user.balance < config.riskPerTrade) return { allowed: false, reason: 'INSUFFICIENT_ACCOUNT_BALANCE' };
+
+    return { allowed: true };
   }
-  return emaArray;
-};
+}
 
-export const calculateMACD = (data: MarketDataPoint[]) => {
-  if (data.length < 26) return null;
+export const resolveBinaryTrade = (trade: Trade, currentPrice: number): Trade => {
+  if (trade.status !== 'OPEN') return trade;
+  const elapsed = (Date.now() - new Date(trade.timestamp).getTime()) / 1000;
   
-  const ema12 = calculateEMA(data, 12);
-  const ema26 = calculateEMA(data, 26);
-  
-  const macdLine = ema12[ema12.length - 1] - ema26[ema26.length - 1];
-  const signalLine = macdLine * 0.9; 
-  const histogram = macdLine - signalLine;
+  if (elapsed < 15) return trade; 
 
-  return { macdLine, signalLine, histogram };
-};
-
-export const calculateBollingerBands = (data: MarketDataPoint[], period: number = 20, stdDevMultiplier: number = 2) => {
-  const sma = calculateSMA(data, period);
-  if (!sma) return null;
-
-  const slice = data.slice(-period);
-  const squaredDiffs = slice.map(d => Math.pow(d.price - sma, 2));
-  const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / period;
-  const stdDev = Math.sqrt(avgSquaredDiff);
+  const isWin = (trade.type === 'CALL' || trade.type === 'BUY')
+    ? currentPrice > trade.price 
+    : currentPrice < trade.price;
 
   return {
-    upper: sma + (stdDev * stdDevMultiplier),
-    lower: sma - (stdDev * stdDevMultiplier),
-    middle: sma
+    ...trade,
+    status: isWin ? 'WON' : 'LOST',
+    profit: isWin ? (trade.amount * (trade.payout || 0.85)) : -trade.amount
   };
-};
-
-export const calculateATR = (data: MarketDataPoint[], period: number = 14): number | null => {
-  if (data.length < period + 1) return null;
-  let trSum = 0;
-  for (let i = data.length - period; i < data.length; i++) {
-     trSum += Math.abs(data[i].price - data[i-1].price);
-  }
-  return trSum / period;
-};
-
-// Stochastic RSI
-export const calculateStochasticRSI = (data: MarketDataPoint[], period: number = 14, smoothK: number = 3, smoothD: number = 3) => {
-  const rsiValues: number[] = [];
-  // Calculate RSI for a sufficient window
-  const requiredData = period + smoothK + smoothD + 20; // buffer
-  if (data.length < requiredData) return null;
-
-  // We need a series of RSI values
-  for (let i = data.length - 20; i < data.length; i++) {
-      const slice = data.slice(0, i+1);
-      const r = calculateRSI(slice, period);
-      if (r !== null) rsiValues.push(r);
-  }
-
-  if (rsiValues.length < period) return null;
-
-  const currentRSI = rsiValues[rsiValues.length - 1];
-  const windowRSI = rsiValues.slice(-period);
-  const minRSI = Math.min(...windowRSI);
-  const maxRSI = Math.max(...windowRSI);
-
-  if (maxRSI === minRSI) return { k: 50, d: 50 }; // flat
-
-  const stoch = ((currentRSI - minRSI) / (maxRSI - minRSI)) * 100;
-  // Simple smoothing approximation for this context
-  return { k: stoch, d: stoch }; 
-};
-
-// Ichimoku Cloud (Approximation using Close prices as High/Low proxy for simplicity in this tick-based system)
-export const calculateIchimokuCloud = (data: MarketDataPoint[]) => {
-  if (data.length < 52) return null;
-
-  const getHighLowAvg = (period: number) => {
-      const slice = data.slice(-period);
-      const prices = slice.map(d => d.price);
-      return (Math.max(...prices) + Math.min(...prices)) / 2;
-  };
-
-  const tenkanSen = getHighLowAvg(9);
-  const kijunSen = getHighLowAvg(26);
-  const senkouSpanA = (tenkanSen + kijunSen) / 2;
-  const senkouSpanB = getHighLowAvg(52);
-  
-  // Current Close relative to cloud (Cloud is usually shifted forward 26 periods)
-  // Here we return the values calculated on *current* data to see where price sits
-  return {
-      tenkanSen,
-      kijunSen,
-      senkouSpanA,
-      senkouSpanB,
-      isAboveCloud: data[data.length - 1].price > Math.max(senkouSpanA, senkouSpanB),
-      isBelowCloud: data[data.length - 1].price < Math.min(senkouSpanA, senkouSpanB)
-  };
-};
-
-// --- Market Generation ---
-
-export const generateMarketData = (pair: string = 'BTC/USD'): MarketDataPoint => {
-  const now = new Date();
-  
-  // Update ALL pairs to ensure background trades trigger SL/TP even if not viewing the chart
-  Object.keys(PAIR_CONFIGS).forEach(key => {
-    const config = PAIR_CONFIGS[key];
-    if (!config) return; 
-
-    const trend = (Math.random() - 0.5) * config.volatility * 0.5;
-    priceMomentum[key] = (priceMomentum[key] * 0.9) + trend; 
-    
-    const noise = (Math.random() - 0.5) * config.volatility * 0.5;
-    const move = priceMomentum[key] + noise;
-    
-    currentPrices[key] += move;
-    
-    if (currentPrices[key] < 0.00001) currentPrices[key] = config.price;
-  });
-
-  const safePair = PAIR_CONFIGS[pair] ? pair : 'BTC/USD';
-  return {
-    time: now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    price: currentPrices[safePair],
-    volume: Math.floor(Math.random() * 100 + 50)
-  };
-};
-
-export const generateInitialHistory = (points: number, pair: string = 'BTC/USD'): MarketDataPoint[] => {
-  const history: MarketDataPoint[] = [];
-  const safePair = PAIR_CONFIGS[pair] ? pair : 'BTC/USD';
-  let price = currentPrices[safePair] || PAIR_CONFIGS[safePair]?.price || 0;
-  const now = new Date();
-  const config = PAIR_CONFIGS[safePair] || PAIR_CONFIGS['BTC/USD'];
-
-  for (let i = 0; i < points; i++) {
-    const time = new Date(now.getTime() - i * 1500);
-    history.unshift({
-        time: time.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        price: price,
-        volume: Math.floor(Math.random() * 100 + 50)
-    });
-    
-    const change = (Math.random() - 0.5) * config.volatility;
-    price -= change;
-  }
-  
-  return history;
 };

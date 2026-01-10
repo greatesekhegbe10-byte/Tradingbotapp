@@ -1,434 +1,431 @@
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Bot, Wallet, Activity, AlertTriangle, Settings, RefreshCw, Target, Shield, Gauge } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Bot, LayoutDashboard, Shield, Zap, ShieldCheck, History, Sliders, Target, Activity, Users, ShieldAlert, Newspaper, TrendingUp, TrendingDown, Info, Cpu, Lock, X, Key, CreditCard, Menu, Eye } from 'lucide-react';
 import { StatsCard } from './components/StatsCard';
 import { ChartPanel } from './components/ChartPanel';
 import { BotStatusPanel } from './components/BotStatusPanel';
 import { TradeHistory } from './components/TradeHistory';
 import { AuthPage } from './components/AuthPage';
-import { BrokerModal } from './components/BrokerModal';
+import { SettingsTab } from './components/SettingsTab';
+import { AdminTab } from './components/AdminTab';
 import { AIChat } from './components/AIChat';
-import { SettingsModal } from './components/SettingsModal';
-import { SubscriptionGate } from './components/SubscriptionGate';
-import { MarketDataPoint, Trade, TradeType, AnalysisResult, BotConfig } from './types';
-import { generateMarketData, generateInitialHistory, getPairDetails, getPrice, fetchLivePrices } from './services/marketService';
+import { BrokerModal } from './components/BrokerModal';
+import { UpgradeModal } from './components/UpgradeModal';
+import { UserProfile, Trade, AnalysisResult, BotConfig, NewsItem, UserTier, STRATEGIES } from './types';
+import { getPrice, resolveBinaryTrade, RiskManager, SignalEngine } from './services/marketService';
 import { analyzeMarket } from './services/geminiService';
 
-const AVAILABLE_PAIRS = [
-    'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'NZD/USD', 'USD/CAD', 'USD/CHF',
-    'XAU/USD', 'WTI/USD', 'BRENT/USD',
-    'BTC/USD', 'ETH/USD', 'SOL/USD',
-    'GBP/JPY', 'EUR/JPY', 'EUR/GBP', 'GBP/CAD', 'CAD/JPY', 'AUD/JPY', 'NZD/JPY',
-    'EUR/CHF', 'GBP/CHF', 'CAD/CHF', 'AUD/CAD', 'AUD/NZD', 'NZD/CAD', 'CHF/JPY',
-    'EUR/CAD', 'EUR/AUD', 'EUR/NZD', 'EUR/SEK', 'EUR/SGD', 'GBP/SEK', 'GBP/NZD',
-    'AUD/SGD', 'AUD/CHF', 'NZD/CHF', 'SGD/JPY', 'HKD/JPY', 'NOK/JPY', 'SEK/JPY',
-    'USD/NOK', 'USD/SEK', 'USD/ZAR', 'USD/HKD', 'USD/TRY', 'USD/MXN', 'USD/SGD', 'USD/PLN', 'USD/HUF'
-];
+type View = 'dashboard' | 'ledger' | 'settings' | 'admin';
+
+export interface PaymentLog {
+  id: string;
+  userId: string;
+  userName: string;
+  amount: number;
+  tier: UserTier;
+  bank: 'KUDA' | 'LEAD';
+  timestamp: string;
+  status: 'VERIFIED' | 'PENDING';
+}
 
 const App: React.FC = () => {
-  // Auth & Persistence
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem('nexus_auth') === 'true');
-  const [isSubscribed, setIsSubscribed] = useState<boolean>(() => localStorage.getItem('nexus_sub') === 'true');
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => localStorage.getItem('nexus_admin') === 'true');
-  const [isInitializing, setIsInitializing] = useState(true);
-  
-  // Market & Core State
-  const [marketData, setMarketData] = useState<MarketDataPoint[]>([]);
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  
-  // UI State
-  const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [manualSL, setManualSL] = useState<string>('');
-  const [manualTP, setManualTP] = useState<string>('');
-  
-  // Financial State
-  const [balances, setBalances] = useState({ DEMO: 10000, LIVE: 0 });
-  const [activeWallet, setActiveWallet] = useState<'DEMO' | 'LIVE'>('DEMO');
-
-  const [config, setConfig] = useState<BotConfig>({
-    isActive: false,
-    riskLevel: 'MEDIUM',
-    sensitivity: 'MEDIUM',
-    pair: 'XAU/USD',
-    balance: 10000,
-    isPro: localStorage.getItem('nexus_admin') === 'true',
-    paymentStatus: localStorage.getItem('nexus_admin') === 'true' ? 'VERIFIED' : 'UNPAID'
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('nexus_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
   });
 
-  const [pendingTrade, setPendingTrade] = useState<{ type: TradeType; price: number; amount: number; sl?: number; tp?: number } | null>(null);
+  // Admin Verification & Simulation State
+  const [isAdminVerified, setIsAdminVerified] = useState(false);
+  const [showAdminPasscode, setShowAdminPasscode] = useState(false);
+  const [adminPasscodeInput, setAdminPasscodeInput] = useState('');
+  const [simulatedTier, setSimulatedTier] = useState<UserTier | null>(null);
 
-  // Persistence Refs
-  const marketDataRef = useRef<MarketDataPoint[]>([]);
-  const configRef = useRef(config);
-  const isAnalyzingRef = useRef(false);
-  const activeWalletRef = useRef(activeWallet);
+  const [managedUsers, setManagedUsers] = useState<UserProfile[]>([
+    { id: 'NX-9921', name: 'John Alpha', email: 'john@trading.com', tier: 'PRO', role: 'NONE', balance: 5400, mode: 'LIVE', status: 'ACTIVE', paymentMethods: ['VISA **** 4412'], isLiveAccount: true, staking: { plan: 'FIXED', multiplier: 2, currentStep: 0 }, stats: { totalProfit: 1200, winRate: 68, drawdown: 2, lossStreak: 0, sessionTrades: 12 } },
+    { id: 'NX-4412', name: 'Sarah Beta', email: 'sarah@skynet.ai', tier: 'VIP', role: 'NONE', balance: 12500, mode: 'PAPER', status: 'ACTIVE', paymentMethods: ['MASTERCARD **** 9011'], isLiveAccount: false, staking: { plan: 'COMPOUND', multiplier: 3, currentStep: 0 }, stats: { totalProfit: 4500, winRate: 82, drawdown: 1, lossStreak: 0, sessionTrades: 45 } },
+  ]);
 
-  useEffect(() => { 
-    configRef.current = config; 
-  }, [config]);
+  const [paymentLogs, setPaymentLogs] = useState<PaymentLog[]>([
+    { id: 'TRX-101', userId: 'NX-4412', userName: 'Sarah Beta', amount: 300, tier: 'VIP', bank: 'LEAD', timestamp: '2025-05-15 14:20', status: 'PENDING' },
+    { id: 'TRX-102', userId: 'NX-9921', userName: 'John Alpha', amount: 60, tier: 'PRO', bank: 'KUDA', timestamp: '2025-05-16 09:12', status: 'VERIFIED' },
+  ]);
+
+  const [activeView, setActiveView] = useState<View>('dashboard');
+  const [marketData, setMarketData] = useState<any[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('--:--:--');
+  
+  // TIER LOGIC: effectiveTier uses simulatedTier if available, otherwise actual user tier
+  const effectiveTier = simulatedTier || user?.tier || 'BASIC';
+
+  const [config, setConfig] = useState<BotConfig>(() => ({
+    isActive: false, 
+    isAutoTrade: false, 
+    killSwitch: false, 
+    pair: 'EUR/USD', 
+    tier: effectiveTier,
+    strategyId: 'BASIC_RSI', 
+    maxDrawdown: 10, 
+    riskPerTrade: 10,
+    useTrailingStop: false, 
+    stakingPlan: 'FIXED', 
+    binaryExpiry: 1,
+    signalMode: 'BALANCED', 
+    maxTradesPerSession: 50, 
+    coolDownMinutes: 2,
+    useAiSignals: true, 
+    useNewsAnalysis: true, 
+    minConfidence: 80,
+    defaultStopLoss: 2,
+    defaultTakeProfit: 4
+  }));
+
+  // Sync config tier when effectiveTier changes
+  useEffect(() => {
+    setConfig(prev => ({ ...prev, tier: effectiveTier }));
+  }, [effectiveTier]);
+
+  const [pairNews, setPairNews] = useState<NewsItem[]>([]);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const isAdmin = user?.name === 'Alex' || user?.role === 'ROOT';
 
   useEffect(() => {
-    activeWalletRef.current = activeWallet;
-  }, [activeWallet]);
-
-  // Initial Sync
-  useEffect(() => {
-    const init = async () => {
-      setIsInitializing(true);
-      await fetchLivePrices();
-      const initial = generateInitialHistory(50, config.pair);
-      setMarketData(initial);
-      marketDataRef.current = initial;
-      setIsInitializing(false);
-    };
-    init();
-
-    const syncInterval = setInterval(fetchLivePrices, 60000);
-    return () => clearInterval(syncInterval);
-  }, []);
-
-  // Real-time Feed
-  useEffect(() => {
-    const interval = setInterval(() => {
+    const ticker = setInterval(() => {
+      const price = getPrice(config.pair);
+      setCurrentPrice(price);
       setMarketData(prev => {
-        const newData = generateMarketData(configRef.current.pair); 
-        const updated = [...prev, newData].slice(-60);
-        marketDataRef.current = updated;
-        return updated;
+        const newData = [...prev, { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), price }];
+        return newData.slice(-40);
       });
-    }, 1500); 
-    return () => clearInterval(interval);
-  }, []);
+      setTrades(prev => prev.map(t => resolveBinaryTrade(t, price)));
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [config.pair]);
 
-  // Derived Balance Config Sync
-  useEffect(() => {
-      const currentBal = activeWallet === 'DEMO' ? balances.DEMO : balances.LIVE;
-      setConfig(prev => prev.balance === currentBal ? prev : { ...prev, balance: currentBal });
-  }, [balances, activeWallet]);
-
-  // Dynamic SL/TP Updates from AI
-  useEffect(() => {
-    if (analysis) {
-        setManualSL(analysis.stopLoss.toFixed(getPairDetails(config.pair).decimals));
-        setManualTP(analysis.takeProfit.toFixed(getPairDetails(config.pair).decimals));
-    }
-  }, [analysis, config.pair]);
-
-  // Trade Execution Core
-  const executeTrade = useCallback((type: TradeType, sl?: number, tp?: number, overridePair?: string) => {
-    const symbol = overridePair || configRef.current.pair;
-    const currentPrice = getPrice(symbol);
-    
-    if (!currentPrice || currentPrice <= 0) return;
-
-    const riskPct = configRef.current.riskLevel === 'LOW' ? 0.01 : configRef.current.riskLevel === 'MEDIUM' ? 0.05 : 0.10;
-    const currentBalance = activeWalletRef.current === 'DEMO' ? balances.DEMO : balances.LIVE;
-    const maxRiskAmount = currentBalance * riskPct;
-    const amount = parseFloat((maxRiskAmount / currentPrice).toFixed(6));
-
-    if (amount <= 0 || (amount * currentPrice) > currentBalance) {
-        if (!configRef.current.isActive) alert("Insufficient balance for requested risk level.");
-        return;
-    }
-
-    const marginRequired = amount * currentPrice;
-
-    setBalances(prev => ({
-        ...prev,
-        [activeWalletRef.current]: prev[activeWalletRef.current] - marginRequired
-    }));
-
-    const newTrade: Trade = {
-      id: Date.now().toString(),
-      symbol,
-      type,
-      price: currentPrice,
-      amount,
-      timestamp: new Date(),
-      status: 'OPEN',
-      stopLoss: sl,
-      takeProfit: tp
-    };
-
-    setTrades(prev => [newTrade, ...prev]);
-    setPendingTrade(null);
-  }, [balances.DEMO, balances.LIVE]);
-
-  // Trade Monitoring & Exit Logic
-  useEffect(() => {
-    let balanceChanged = false;
-    let newDemo = balances.DEMO;
-    let newLive = balances.LIVE;
-
-    const updatedTrades = trades.map(trade => {
-      if (trade.status !== 'OPEN') return trade;
-
-      const currentPrice = getPrice(trade.symbol);
-      let shouldClose = false;
-      let profit = 0;
-      let newSL = trade.stopLoss || 0;
-
-      // Trailing Stop Simulation
-      if (trade.type === TradeType.BUY) {
-        const profitPct = (currentPrice - trade.price) / trade.price;
-        if (profitPct > 0.01 && (!trade.stopLoss || newSL < trade.price)) {
-          newSL = trade.price; // Move to break even
-        }
-        if (trade.stopLoss && currentPrice <= trade.stopLoss) shouldClose = true;
-        if (trade.takeProfit && currentPrice >= trade.takeProfit) shouldClose = true;
-        if (shouldClose) profit = (currentPrice - trade.price) * trade.amount;
-      } else if (trade.type === TradeType.SELL) {
-        const profitPct = (trade.price - currentPrice) / trade.price;
-        if (profitPct > 0.01 && (!trade.stopLoss || newSL > trade.price)) {
-          newSL = trade.price;
-        }
-        if (trade.stopLoss && currentPrice >= trade.stopLoss) shouldClose = true;
-        if (trade.takeProfit && currentPrice <= trade.takeProfit) shouldClose = true;
-        if (shouldClose) profit = (trade.price - currentPrice) * trade.amount;
-      }
-
-      if (shouldClose) {
-        balanceChanged = true;
-        const totalReturn = (trade.price * trade.amount) + profit;
-        if (activeWallet === 'DEMO') newDemo += totalReturn;
-        else newLive += totalReturn;
-        return { ...trade, status: 'CLOSED' as const, profit, closePrice: currentPrice, closeTime: new Date() };
-      }
-
-      if (newSL !== trade.stopLoss) {
-        return { ...trade, stopLoss: newSL, isTrailing: true };
-      }
-
-      return trade;
-    });
-
-    if (balanceChanged) {
-      setTrades(updatedTrades);
-      setBalances({ DEMO: newDemo, LIVE: newLive });
-    }
-  }, [marketData]);
-
-  // AI Analysis Effect
-  useEffect(() => {
-    const loop = async () => {
-      if (isAnalyzingRef.current || marketDataRef.current.length < 10) return;
-      isAnalyzingRef.current = true;
-      setIsAnalyzing(true);
+  const performAnalysis = useCallback(async () => {
+    if (!config.isActive || isAnalyzing || marketData.length < 5) return;
+    setIsAnalyzing(true);
+    try {
+      const result = await analyzeMarket(marketData, config.pair, config.tier, ["Policy Shift Alert", "Liquidity Surge"]);
+      setAnalysis(result);
+      setLastSyncTime(new Date().toLocaleTimeString());
       
-      try {
-        const res = await analyzeMarket(
-            marketDataRef.current, 
-            configRef.current.balance, 
-            configRef.current.riskLevel, 
-            configRef.current.pair,
-            configRef.current.sensitivity
-        );
-        setAnalysis(res);
-
-        const threshold = configRef.current.sensitivity === 'HIGH' ? 80 : 85;
-        if (configRef.current.isActive && res.confidence >= threshold && res.recommendation !== TradeType.HOLD) {
-           executeTrade(res.recommendation, res.stopLoss, res.takeProfit);
+      // AI-Driven Strategy Selection
+      if (config.useAiSignals && result.recommendedStrategyId && result.recommendedStrategyId !== config.strategyId) {
+        const recommendedStrat = STRATEGIES.find(s => s.id === result.recommendedStrategyId);
+        const tierWeight = { 'BASIC': 0, 'PRO': 1, 'VIP': 2 };
+        if (recommendedStrat && tierWeight[config.tier] >= tierWeight[recommendedStrat.tier as UserTier]) {
+          setConfig(prev => ({ ...prev, strategyId: result.recommendedStrategyId! }));
         }
-      } catch (e) {
-        console.error("AI Error:", e);
-      } finally {
-        setIsAnalyzing(false);
-        isAnalyzingRef.current = false;
       }
+
+      if (config.isAutoTrade && config.useAiSignals && result.recommendation !== 'HOLD') {
+        const signalBreakdown = SignalEngine.evaluate(result, config);
+        const riskResult = RiskManager.canTrade(user!, config, signalBreakdown);
+        
+        if (riskResult.allowed) {
+          const newTrade: Trade = {
+            id: Math.random().toString(36).substr(2, 9),
+            symbol: config.pair,
+            type: result.recommendation === 'BUY' ? 'CALL' : 'PUT' as any,
+            price: currentPrice,
+            amount: config.riskPerTrade,
+            lotSize: result.suggestedLotSize,
+            timestamp: new Date(),
+            status: 'OPEN',
+            mode: user!.mode,
+            stopLoss: result.stopLoss,
+            takeProfit: result.takeProfit,
+            executionLogs: [`AI Entry: ${result.recommendedStrategyId}`]
+          };
+          setTrades(prev => [newTrade, ...prev]);
+        }
+      }
+    } catch (e) { 
+      console.error("Analysis Failed:", e); 
+    } finally { 
+      setIsAnalyzing(false); 
+    }
+  }, [config, isAnalyzing, marketData, user, currentPrice]);
+
+  useEffect(() => {
+    const aiInterval = setInterval(performAnalysis, 5000);
+    return () => clearInterval(aiInterval);
+  }, [performAnalysis]);
+
+  const handleLogin = (isRoot: boolean = false) => {
+    const profile: UserProfile = {
+      id: isRoot ? 'MASTER-ROOT' : 'NX-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+      name: isRoot ? 'Alex' : 'Trader',
+      email: isRoot ? 'alex@nexus.ai' : 'user@nexus.ai',
+      tier: isRoot ? 'VIP' : 'BASIC',
+      role: isRoot ? 'ROOT' : 'NONE',
+      balance: 10000, mode: 'PAPER', status: 'ACTIVE',
+      paymentMethods: isRoot ? ['SECURE_BRIDGE_PROTOCOL'] : ['VISA **** 1190'], 
+      staking: { plan: 'FIXED', multiplier: 2.5, currentStep: 0 },
+      stats: { totalProfit: 0, winRate: 0, drawdown: 0, lossStreak: 0, sessionTrades: 0 },
+      isLiveAccount: false,
+      connectedBroker: 'MT5 Institutional'
     };
-
-    const timer = setInterval(loop, config.isPro ? 12000 : 25000);
-    loop();
-    return () => clearInterval(timer);
-  }, [config.isPro, config.pair, config.sensitivity, executeTrade]);
-
-  const initiateManualTrade = useCallback((type: TradeType) => {
-      const price = marketDataRef.current[marketDataRef.current.length - 1].price;
-      const riskPct = config.riskLevel === 'LOW' ? 0.01 : config.riskLevel === 'MEDIUM' ? 0.05 : 0.10;
-      const currentBal = activeWallet === 'DEMO' ? balances.DEMO : balances.LIVE;
-      const amount = parseFloat(((currentBal * riskPct) / price).toFixed(6));
-      const sl = manualSL ? parseFloat(manualSL) : undefined;
-      const tp = manualTP ? parseFloat(manualTP) : undefined;
-      setPendingTrade({ type, price, amount, sl, tp });
-  }, [config.riskLevel, activeWallet, balances, manualSL, manualTP]);
-
-  const logout = () => {
-    localStorage.clear();
-    window.location.reload();
-  };
-
-  if (!isAuthenticated) return <AuthPage onLogin={(admin = false) => {
+    setUser(profile);
     setIsAuthenticated(true);
     localStorage.setItem('nexus_auth', 'true');
-    if (admin) {
-      setIsAdmin(true);
-      localStorage.setItem('nexus_admin', 'true');
-      setConfig(prev => ({ ...prev, isPro: true, paymentStatus: 'VERIFIED' }));
-    }
-  }} />;
+    localStorage.setItem('nexus_user', JSON.stringify(profile));
+    if(isRoot) setConfig(c => ({...c, tier: 'VIP'}));
+  };
 
-  if (!isSubscribed && !isAdmin) return <SubscriptionGate onVerify={() => {
-    setIsSubscribed(true);
-    localStorage.setItem('nexus_sub', 'true');
-  }} />;
+  const handleAdminAuth = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPasscodeInput === '09162502987') {
+      setIsAdminVerified(true);
+      setShowAdminPasscode(false);
+      setActiveView('admin');
+      setAdminPasscodeInput('');
+    } else {
+      alert("UNAUTHORIZED ACCESS ATTEMPT.");
+      setAdminPasscodeInput('');
+    }
+  };
+
+  const handleUpgrade = (tier: UserTier) => {
+    if (!user) return;
+    const updatedUser = { ...user, tier };
+    setUser(updatedUser);
+    setConfig(c => ({ ...c, tier }));
+    localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
+  };
+
+  if (!isAuthenticated) return <AuthPage onLogin={handleLogin} />;
 
   return (
-    <div className="min-h-screen bg-background text-gray-100 font-sans p-4 md:p-6 pb-24 md:pb-6 relative overflow-x-hidden">
-      {isInitializing && (
-          <div className="fixed inset-0 z-[70] bg-background flex flex-col items-center justify-center backdrop-blur-md">
-              <RefreshCw className="w-12 h-12 text-primary animate-spin mb-4" />
-              <h2 className="text-xl font-bold text-white tracking-widest uppercase">Initializing Core Feeds</h2>
-          </div>
-      )}
-
-      {isAdmin && (
-        <div className="fixed top-0 left-0 w-full bg-amber-500 text-black px-4 py-1 text-[10px] font-bold text-center z-[100] uppercase tracking-widest flex items-center justify-center gap-4">
-            <span>Maintenance Terminal • Build: NX-v2.5</span>
-            <button onClick={logout} className="underline hover:no-underline">Log Out</button>
+    <div className={`min-h-screen bg-[#070b14] text-gray-100 flex flex-col md:flex-row overflow-hidden font-sans ${isAdmin ? 'border-4 border-accent/20' : ''}`}>
+      
+      {/* ADMIN PASSCODE MODAL */}
+      {showAdminPasscode && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+           <div className="bg-[#0a101f] border border-accent/30 w-full max-w-sm rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden">
+              <button onClick={() => setShowAdminPasscode(false)} className="absolute top-6 right-6 text-gray-500 hover:text-white"><X /></button>
+              <div className="flex flex-col items-center mb-8">
+                 <div className="w-16 h-16 bg-accent/20 rounded-2xl flex items-center justify-center mb-4">
+                    <Lock className="w-8 h-8 text-accent" />
+                 </div>
+                 <h2 className="text-xl font-black text-white uppercase tracking-tighter">Admin Vault</h2>
+                 <p className="text-[10px] text-gray-500 font-black uppercase tracking-widest mt-1">Authorization Code Required</p>
+              </div>
+              <form onSubmit={handleAdminAuth} className="space-y-6">
+                 <div className="relative group">
+                    <Key className="absolute left-4 top-4 w-4 h-4 text-accent" />
+                    <input 
+                      type="password" 
+                      value={adminPasscodeInput}
+                      onChange={(e) => setAdminPasscodeInput(e.target.value)}
+                      placeholder="Passcode"
+                      autoFocus
+                      className="w-full bg-black border border-gray-800 rounded-2xl py-3.5 pl-12 pr-4 text-white text-center font-mono tracking-[0.4em] focus:border-accent outline-none"
+                    />
+                 </div>
+                 <button type="submit" className="w-full py-4 bg-accent text-white font-black uppercase text-[10px] tracking-widest rounded-2xl hover:bg-accent/80 transition-all">Verify Node</button>
+              </form>
+           </div>
         </div>
       )}
 
+      {/* RESPONSIVE SIDEBAR: Sidebar on desktop, Hidden drawer or simple list on mobile */}
+      <aside className={`w-full md:w-20 lg:w-72 bg-[#0a101f] border-r md:flex flex-col p-6 gap-8 z-50 hidden ${isAdmin ? 'border-accent/40 bg-accent/5' : 'border-gray-800'}`}>
+        <div className="flex items-center gap-4 px-2">
+            <div className={`p-3 rounded-2xl shadow-xl ${isAdmin ? 'bg-accent/20' : 'bg-primary/20'}`}>
+               <Bot className={`w-8 h-8 ${isAdmin ? 'text-accent' : 'text-primary'}`} />
+            </div>
+            <div className="hidden lg:block">
+               <h1 className="text-xl font-black text-white uppercase tracking-tighter">Nexus AI</h1>
+               <span className={`text-[10px] font-black uppercase tracking-widest opacity-60 ${isAdmin ? 'text-accent' : 'text-gray-500'}`}>
+                 {isAdmin ? 'Alex Protocol' : 'Trader Hub'}
+               </span>
+            </div>
+        </div>
+        <nav className="flex-1 space-y-2">
+            <button onClick={() => setActiveView('dashboard')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'dashboard' ? 'bg-primary text-white shadow-2xl shadow-primary/20' : 'text-gray-500 hover:text-white'}`}>
+               <LayoutDashboard className="w-5 h-5" />
+               <span className="hidden lg:block text-xs font-black uppercase tracking-widest">Dashboard</span>
+            </button>
+            <button onClick={() => setActiveView('ledger')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'ledger' ? 'bg-primary text-white shadow-2xl shadow-primary/20' : 'text-gray-500 hover:text-white'}`}>
+               <History className="w-5 h-5" />
+               <span className="hidden lg:block text-xs font-black uppercase tracking-widest">History</span>
+            </button>
+            <button onClick={() => setActiveView('settings')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'settings' ? 'bg-primary text-white shadow-2xl shadow-primary/20' : 'text-gray-500 hover:text-white'}`}>
+               <Sliders className="w-5 h-5" />
+               <span className="hidden lg:block text-xs font-black uppercase tracking-widest">Settings</span>
+            </button>
+            
+            {isAdmin && (
+               <button 
+                onClick={() => isAdminVerified ? setActiveView('admin') : setShowAdminPasscode(true)} 
+                className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'admin' ? 'bg-accent text-white shadow-2xl shadow-accent/20' : 'text-accent/50 hover:text-accent'}`}
+               >
+                  <Lock className="w-5 h-5" />
+                  <span className="hidden lg:block text-xs font-black uppercase tracking-widest">Admin Hub</span>
+               </button>
+            )}
+        </nav>
+      </aside>
+
+      {/* MOBILE BOTTOM NAVIGATION */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0a101f]/90 backdrop-blur-xl border-t border-gray-800 flex justify-around p-4 z-[90]">
+          <button onClick={() => setActiveView('dashboard')} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-primary' : 'text-gray-500'}`}>
+            <LayoutDashboard className="w-6 h-6" />
+            <span className="text-[9px] font-black uppercase">Home</span>
+          </button>
+          <button onClick={() => setActiveView('ledger')} className={`flex flex-col items-center gap-1 ${activeView === 'ledger' ? 'text-primary' : 'text-gray-500'}`}>
+            <History className="w-6 h-6" />
+            <span className="text-[9px] font-black uppercase">History</span>
+          </button>
+          <button onClick={() => setActiveView('settings')} className={`flex flex-col items-center gap-1 ${activeView === 'settings' ? 'text-primary' : 'text-gray-500'}`}>
+            <Sliders className="w-6 h-6" />
+            <span className="text-[9px] font-black uppercase">Settings</span>
+          </button>
+          {isAdmin && (
+            <button onClick={() => isAdminVerified ? setActiveView('admin') : setShowAdminPasscode(true)} className={`flex flex-col items-center gap-1 ${activeView === 'admin' ? 'text-accent' : 'text-gray-500'}`}>
+              <Lock className="w-6 h-6" />
+              <span className="text-[9px] font-black uppercase">Admin</span>
+            </button>
+          )}
+      </nav>
+
+      <main className="flex-1 relative flex flex-col overflow-hidden pb-20 md:pb-0">
+         <header className="h-20 md:h-24 border-b border-gray-800 flex items-center justify-between px-6 md:px-10 bg-[#0a101f]/50 backdrop-blur-3xl z-40">
+            <div className="flex items-center gap-4">
+               <div>
+                  <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] mb-1">Execution Node</h2>
+                  <div className="flex items-center gap-3">
+                     <div className={`w-2 h-2 rounded-full ${config.isActive ? 'bg-success animate-pulse' : 'bg-gray-600'}`}></div>
+                     <span className="text-base md:text-lg font-black text-white tracking-tighter uppercase">{config.pair} <span className="text-gray-600 font-medium hidden sm:inline">/ USD</span></span>
+                  </div>
+               </div>
+            </div>
+
+            <div className="flex items-center gap-3 md:gap-6">
+               {/* TIER SIMULATION TOGGLE (Alex only) */}
+               {isAdmin && (
+                 <div className="hidden lg:flex bg-gray-900 border border-gray-800 p-1 rounded-xl items-center gap-1">
+                    <span className="px-2 text-[8px] font-black text-accent uppercase flex items-center gap-1"><Eye className="w-2.5 h-2.5" /> Sim</span>
+                    {(['BASIC', 'PRO', 'VIP'] as UserTier[]).map(t => (
+                      <button 
+                        key={t}
+                        onClick={() => setSimulatedTier(simulatedTier === t ? null : t)}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${simulatedTier === t ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                 </div>
+               )}
+
+               <div className="text-right hidden sm:block">
+                  <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Sync Time</p>
+                  <p className="text-sm font-mono font-black text-primary">{lastSyncTime}</p>
+               </div>
+               {!isAdmin && <button onClick={() => setIsUpgradeModalOpen(true)} className="px-4 md:px-5 py-2.5 md:py-3 bg-primary/10 border border-primary/20 rounded-xl text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl shadow-primary/5">Upgrade</button>}
+               <button onClick={() => setIsBrokerModalOpen(true)} className={`p-2.5 md:p-3 border rounded-xl transition-all ${isAdmin ? 'bg-accent/10 border-accent/20 text-accent hover:bg-accent hover:text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                 <Zap className="w-4 h-4 md:w-5 md:h-5" />
+               </button>
+            </div>
+         </header>
+
+         <div className="flex-1 overflow-y-auto p-6 md:p-10 scrollbar-hide">
+            {activeView === 'dashboard' && (
+              <div className="grid grid-cols-12 gap-6 md:gap-8">
+                 <div className="col-span-12 xl:col-span-8 space-y-6 md:space-y-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+                       <StatsCard label="Net Profit" value={`$${user?.stats.totalProfit.toFixed(2)}`} trend="14.2%" trendUp icon={Activity} />
+                       <StatsCard label="Win Rate" value={`${user?.stats.winRate}%`} trend="3.5%" trendUp icon={Target} color="text-success" />
+                       <StatsCard label="Session Drawdown" value={`${user?.stats.drawdown}%`} trend="0.8%" icon={Shield} color="text-danger" />
+                    </div>
+                    
+                    <div className="bg-surface p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-gray-800 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                       <div className="flex items-center gap-4">
+                          <div className="p-3 bg-accent/20 rounded-2xl"><Cpu className="w-6 h-6 text-accent" /></div>
+                          <div className="text-center sm:text-left">
+                             <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Neural Strategy Logic</p>
+                             <div className="flex items-center gap-2 justify-center sm:justify-start">
+                                <h3 className="text-lg font-black text-white uppercase tracking-tighter">
+                                   {STRATEGIES.find(s => s.id === config.strategyId)?.name || "Neural RSI Momentum"}
+                                </h3>
+                                {config.useAiSignals && (
+                                    <span className="flex items-center gap-1 bg-primary/10 text-primary text-[8px] font-black uppercase px-2 py-0.5 rounded border border-primary/20">
+                                       <Zap className="w-2 h-2" /> AI Managed
+                                    </span>
+                                )}
+                             </div>
+                          </div>
+                       </div>
+                       <div className="text-[9px] font-black text-accent uppercase tracking-[0.2em] bg-accent/5 px-4 py-2 rounded-full border border-accent/20">
+                          {effectiveTier} Tier Active
+                       </div>
+                    </div>
+
+                    <ChartPanel data={marketData} pair={config.pair} trades={trades} analysis={analysis} />
+                    <TradeHistory trades={trades} onExecuteSignal={() => {}} />
+                 </div>
+                 <div className="col-span-12 xl:col-span-4 h-full">
+                    <BotStatusPanel 
+                      analysis={analysis} 
+                      config={config} 
+                      userTier={effectiveTier} 
+                      onToggleActive={() => setConfig(c => ({...c, isActive: !c.isActive}))}
+                      onToggleAuto={() => setConfig(c => ({...c, isAutoTrade: !c.isAutoTrade}))}
+                      isAnalyzing={isAnalyzing}
+                      livePrice={currentPrice}
+                    />
+                 </div>
+              </div>
+            )}
+            
+            {activeView === 'ledger' && <TradeHistory trades={trades} onExecuteSignal={() => {}} />}
+            {activeView === 'settings' && <SettingsTab config={config} user={user!} onUpdateConfig={setConfig} onOpenUpgrade={() => setIsUpgradeModalOpen(true)} />}
+            {activeView === 'admin' && isAdmin && (
+              <AdminTab 
+                users={managedUsers} 
+                payments={paymentLogs} 
+                onUpdateUser={(id, up) => setManagedUsers(prev => prev.map(u => u.id === id ? {...u, ...up} : u))} 
+                onVerifyPayment={(id) => setPaymentLogs(prev => prev.map(p => p.id === id ? {...p, status: 'VERIFIED'} : p))}
+              />
+            )}
+         </div>
+      </main>
+
+      <AIChat marketContext={JSON.stringify(marketData.slice(-5))} config={config} />
+      
       <BrokerModal 
         isOpen={isBrokerModalOpen} 
         onClose={() => setIsBrokerModalOpen(false)} 
-        onConnect={(broker, isLive) => {
-          setIsBrokerModalOpen(false);
-          setActiveWallet(isLive ? 'LIVE' : 'DEMO');
-          if (isLive) setBalances(p => ({ ...p, LIVE: 35000 }));
+        onConnect={(broker, isLive, type) => {
+          if(!user) return;
+          const updatedUser = { 
+            ...user, 
+            connectedBroker: broker, 
+            isLiveAccount: isLive, 
+            mode: (isLive ? 'LIVE' : 'PAPER') as any 
+          };
+          setUser(updatedUser);
+          localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
         }} 
       />
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-        config={config}
-        balances={balances}
-        onUpgrade={() => {
-          setConfig(prev => ({ ...prev, isPro: true, paymentStatus: 'VERIFIED' }));
-        }}
+
+      <UpgradeModal 
+        isOpen={isUpgradeModalOpen} 
+        onClose={() => setIsUpgradeModalOpen(false)} 
+        onUpgrade={handleUpgrade} 
       />
-
-      {pendingTrade && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-4">
-              <div className="bg-surface border border-gray-600 p-6 rounded-2xl max-w-sm w-full shadow-2xl">
-                  <h3 className="text-xl font-bold text-white mb-4">Execute Order</h3>
-                  <div className="space-y-3 mb-6 font-mono text-sm">
-                      <div className="flex justify-between">
-                          <span className="text-gray-400">Pair</span>
-                          <span className="text-white">{config.pair}</span>
-                      </div>
-                      <div className="flex justify-between">
-                          <span className="text-gray-400">Action</span>
-                          <span className={pendingTrade.type === TradeType.BUY ? 'text-success' : 'text-danger'}>{pendingTrade.type} MARKET</span>
-                      </div>
-                      <div className="flex justify-between border-t border-gray-700 pt-2">
-                          <span className="text-gray-400">Size</span>
-                          <span className="text-white">{pendingTrade.amount} Units</span>
-                      </div>
-                  </div>
-                  <div className="flex gap-3">
-                      <button onClick={() => setPendingTrade(null)} className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl font-bold">Abort</button>
-                      <button onClick={() => executeTrade(pendingTrade.type, pendingTrade.sl, pendingTrade.tp)} className="flex-1 py-3 bg-primary hover:bg-blue-600 rounded-xl font-bold text-white">Execute</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      <nav className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-surface p-4 rounded-2xl border border-gray-700 shadow-xl mt-4 md:mt-0">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/20 rounded-xl">
-              <Bot className="w-8 h-8 text-primary" />
-          </div>
-          <div>
-              <h1 className="text-xl font-black text-white tracking-tighter uppercase">NexusTrade AI</h1>
-              {(config.isPro || isAdmin) && <span className="text-[9px] bg-yellow-500/20 text-yellow-500 px-1.5 py-0.5 rounded border border-yellow-500/30 font-bold uppercase">Pro Terminal</span>}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-4 w-full md:w-auto justify-end">
-          <select 
-            value={config.pair}
-            onChange={(e) => setConfig(prev => ({ ...prev, pair: e.target.value }))}
-            className="bg-gray-900 border border-gray-700 text-white py-2 px-4 rounded-xl focus:ring-1 focus:ring-primary outline-none font-mono font-bold"
-          >
-            {AVAILABLE_PAIRS.map(pair => (
-                <option key={pair} value={pair}>{pair}</option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-4">
-              <div className="text-right">
-                <span className={`text-[9px] font-bold uppercase tracking-widest ${activeWallet === 'LIVE' ? 'text-green-400' : 'text-gray-500'}`}>
-                    {activeWallet} Account
-                </span>
-                <div className="flex items-center gap-2">
-                    <Wallet className={`w-4 h-4 ${activeWallet === 'LIVE' ? 'text-green-500' : 'text-gray-400'}`} />
-                    <span className="text-xl font-mono font-bold">${config.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                </div>
-              </div>
-              <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-xl transition-colors border border-gray-700">
-                  <Settings className="w-6 h-6" />
-              </button>
-          </div>
-        </div>
-      </nav>
-
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-12 lg:col-span-8 space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatsCard label="Market Cap" value="$2.8T" trend="14%" trendUp icon={Activity} />
-                <StatsCard label="Win Rate" value="84.2%" trend="0.5%" trendUp icon={Bot} color="text-accent" />
-                <div className="bg-surface p-3 rounded-2xl border border-gray-700 flex flex-col justify-between">
-                     <span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Risk</span>
-                     <div className="flex bg-gray-900 rounded-lg p-0.5">
-                         {(['LOW', 'MEDIUM', 'HIGH'] as const).map(l => (
-                             <button key={l} onClick={() => setConfig(p => ({...p, riskLevel: l}))} className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${config.riskLevel === l ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-400'}`}>
-                                 {l}
-                             </button>
-                         ))}
-                     </div>
-                </div>
-                <div className="bg-surface p-3 rounded-2xl border border-gray-700 flex flex-col justify-between">
-                     <span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-1">Sensitivity</span>
-                     <div className="flex bg-gray-900 rounded-lg p-0.5">
-                         {(['LOW', 'MEDIUM', 'HIGH'] as const).map(l => (
-                             <button key={l} onClick={() => setConfig(p => ({...p, sensitivity: l}))} className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${config.sensitivity === l ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-400'}`}>
-                                 {l}
-                             </button>
-                         ))}
-                     </div>
-                </div>
-            </div>
-
-            <ChartPanel data={marketData} pair={config.pair} trades={trades} />
-
-            <div className="bg-surface p-6 rounded-2xl border border-gray-700 shadow-xl space-y-6">
-                <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Stop Loss (Price)</label>
-                        <input type="number" step="0.0001" value={manualSL} onChange={(e) => setManualSL(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:ring-1 focus:ring-danger outline-none font-mono" />
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Take Profit (Price)</label>
-                        <input type="number" step="0.0001" value={manualTP} onChange={(e) => setManualTP(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:ring-1 focus:ring-success outline-none font-mono" />
-                    </div>
-                </div>
-                <div className="flex gap-4">
-                    <button onClick={() => initiateManualTrade(TradeType.BUY)} className="flex-1 py-5 bg-success hover:bg-green-600 text-white font-black rounded-xl shadow-lg shadow-green-900/20 active:scale-95 transition-all text-sm tracking-widest uppercase">Buy Market</button>
-                    <button onClick={() => initiateManualTrade(TradeType.SELL)} className="flex-1 py-5 bg-danger hover:bg-red-600 text-white font-black rounded-xl shadow-lg shadow-red-900/20 active:scale-95 transition-all text-sm tracking-widest uppercase">Sell Market</button>
-                </div>
-            </div>
-        </div>
-
-        <div className="col-span-12 lg:col-span-4 space-y-6">
-          <BotStatusPanel analysis={analysis} config={config} onToggleActive={() => setConfig(p => ({ ...p, isActive: !p.isActive }))} isAnalyzing={isAnalyzing} />
-          <TradeHistory trades={trades} onExecuteSignal={(p, t, sl, tp) => executeTrade(t, sl, tp, p)} />
-        </div>
-      </div>
-
-      <AIChat marketContext={analysis?.reasoning || "Market analysis standby."} config={config} />
     </div>
   );
 };
