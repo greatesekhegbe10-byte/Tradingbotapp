@@ -12,13 +12,14 @@ import { BotConfig, UserProfile, STRATEGIES, StakingPlan, UserTier, PAIR_CONFIGS
 interface SettingsTabProps {
   config: BotConfig;
   user: UserProfile;
+  isAdmin: boolean;
   onUpdateConfig: (config: BotConfig) => void;
   onOpenUpgrade?: () => void;
 }
 
-export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdateConfig, onOpenUpgrade }) => {
+export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, isAdmin, onUpdateConfig, onOpenUpgrade }) => {
   const tierWeight = { 'BASIC': 0, 'PRO': 1, 'VIP': 2 };
-  const currentTierWeight = tierWeight[user.tier] || 0;
+  const currentTierWeight = isAdmin ? 2 : (tierWeight[user.tier] || 0);
 
   const [saveStatus, setSaveStatus] = useState<'IDLE' | 'SAVING' | 'SAVED'>('IDLE');
   const [assetSearch, setAssetSearch] = useState('');
@@ -46,19 +47,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
 
   return (
     <div className="max-w-[1400px] mx-auto animate-fade-in pb-32">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 md:mb-12 gap-6">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <Settings2 className="w-6 h-6 md:w-8 md:h-8 text-primary" />
-            <h1 className="text-3xl md:text-5xl font-black text-white uppercase tracking-tighter">Terminal Hub</h1>
+            <Settings2 className="w-8 h-8 text-primary" />
+            <h1 className="text-5xl font-black text-white uppercase tracking-tighter">Terminal Hub</h1>
           </div>
-          <p className="text-gray-500 font-black uppercase tracking-[0.4em] text-[9px] md:text-[10px] flex items-center gap-2 leading-relaxed">
+          <p className="text-gray-500 font-black uppercase tracking-[0.4em] text-[10px] flex items-center gap-2 leading-relaxed">
             Institutional Configuration Interface
           </p>
         </div>
 
-        <div className="flex items-center gap-4 bg-gray-900/50 p-2 rounded-2xl border border-gray-800 w-full md:w-auto">
-           <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all w-full md:w-auto ${
+        <div className="flex items-center gap-4 bg-gray-900/50 p-2 rounded-2xl border border-gray-800">
+           <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border transition-all ${
              saveStatus === 'SAVED' ? 'bg-success/10 border-success/30 text-success' : 'bg-gray-800/50 border-gray-700 text-gray-400'
            }`}>
               <div className={`w-2 h-2 rounded-full ${saveStatus === 'SAVING' ? 'bg-amber-500 animate-pulse' : saveStatus === 'SAVED' ? 'bg-success' : 'bg-gray-600'}`}></div>
@@ -67,16 +68,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
         </div>
       </header>
 
-      <div className="grid grid-cols-12 gap-6 md:gap-8">
-        <div className="col-span-12 lg:col-span-8 space-y-6 md:space-y-8">
+      <div className="grid grid-cols-12 gap-8">
+        <div className="col-span-12 lg:col-span-8 space-y-8">
           
-          {/* USER TIER & BILLING SUMMARY */}
-          <section className="bg-surface rounded-[2rem] md:rounded-[2.5rem] border border-gray-800 p-6 md:p-8 shadow-2xl overflow-hidden relative group">
-            <div className="absolute top-0 right-0 p-12 opacity-5 hidden sm:block">
+          {/* TIER DISPLAY & UPGRADE */}
+          <section className="bg-surface rounded-[2.5rem] border border-gray-800 p-8 shadow-2xl overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-12 opacity-5">
                <Crown className="w-32 h-32 text-primary" />
             </div>
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-8 relative z-10 gap-6">
-              <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className="flex justify-between items-center mb-8 relative z-10">
+              <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-2xl ${user.tier === 'VIP' ? 'bg-purple-500/20' : user.tier === 'PRO' ? 'bg-yellow-500/20' : 'bg-gray-800'}`}>
                    <Crown className={`w-6 h-6 ${user.tier === 'VIP' ? 'text-purple-400' : user.tier === 'PRO' ? 'text-yellow-400' : 'text-gray-400'}`} />
                 </div>
@@ -85,62 +86,64 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
                   <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Active License Protocol</p>
                 </div>
               </div>
-              <button 
-                onClick={onOpenUpgrade}
-                className="w-full sm:w-auto px-6 py-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-2"
-              >
-                 Upgrade Terminal <ChevronRight className="w-4 h-4" />
-              </button>
+              {!isAdmin && (
+                <button 
+                  onClick={onOpenUpgrade}
+                  className="px-6 py-3 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-xl shadow-primary/20 flex items-center gap-2"
+                >
+                  Upgrade License <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 relative z-10">
-               <div className="bg-gray-900/60 p-5 md:p-6 rounded-2xl border border-gray-800">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+               <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
                   <span className="text-[8px] text-gray-500 font-black uppercase tracking-[0.3em] block mb-2">Current Tier</span>
                   <div className="flex items-center gap-3">
-                     <span className={`text-xl md:text-2xl font-black uppercase tracking-tighter ${user.tier === 'VIP' ? 'text-purple-400' : user.tier === 'PRO' ? 'text-yellow-400' : 'text-gray-400'}`}>
+                     <span className={`text-2xl font-black uppercase tracking-tighter ${user.tier === 'VIP' ? 'text-purple-400' : user.tier === 'PRO' ? 'text-yellow-400' : 'text-gray-400'}`}>
                         {user.tier} Grade
                      </span>
                      {user.tier !== 'BASIC' && <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>}
                   </div>
                </div>
-               <div className="bg-gray-900/60 p-5 md:p-6 rounded-2xl border border-gray-800">
+               <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
                   <span className="text-[8px] text-gray-500 font-black uppercase tracking-[0.3em] block mb-2">Account Identity</span>
                   <div className="flex items-center gap-3">
-                     <span className="text-base md:text-lg font-black text-white uppercase truncate">{user.name}</span>
-                     <span className="text-[8px] md:text-[9px] text-gray-600 font-black truncate">ID: {user.id}</span>
+                     <span className="text-lg font-black text-white uppercase">{user.name}</span>
+                     <span className="text-[9px] text-gray-600 font-black truncate">ID: {user.id}</span>
                   </div>
                </div>
             </div>
           </section>
 
-          {/* NEURAL ENGINE CONFIG */}
-          <section className="bg-surface rounded-[2rem] md:rounded-[2.5rem] border border-gray-800 p-6 md:p-8 shadow-2xl relative overflow-hidden group">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-6">
-              <div className="flex items-center gap-4 w-full sm:w-auto">
+          {/* STRATEGIES */}
+          <section className="bg-surface rounded-[2.5rem] border border-gray-800 p-8 shadow-2xl relative overflow-hidden group">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-4">
                 <div className="p-3 bg-primary/20 rounded-2xl"><Cpu className="w-6 h-6 text-primary" /></div>
                 <div>
                   <h2 className="text-xl font-black text-white uppercase tracking-tighter">Neural Logic Engine</h2>
                   <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Select Strategy Protocol</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between sm:justify-end gap-3 bg-gray-900 px-4 py-3 rounded-xl border border-gray-800 w-full sm:w-auto">
-                <span className="text-[9px] text-gray-500 font-black uppercase">Auto-Switch Logic</span>
-                <button onClick={() => triggerSave({...config, useAiSignals: !config.useAiSignals})}>
-                  {config.useAiSignals ? <ToggleRight className="w-8 h-8 text-success" /> : <ToggleLeft className="w-8 h-8 text-gray-600" />}
+              <div className="flex items-center gap-3 bg-gray-900 px-4 py-2 rounded-xl border border-gray-800">
+                <span className="text-[9px] text-gray-500 font-black uppercase">Auto-Pilot</span>
+                <button onClick={() => triggerSave({...config, isAutoTrade: !config.isAutoTrade})}>
+                  {config.isAutoTrade ? <ToggleRight className="w-8 h-8 text-success" /> : <ToggleLeft className="w-8 h-8 text-gray-600" />}
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {STRATEGIES.map(strat => {
-                const isLocked = currentTierWeight < tierWeight[strat.tier as UserTier];
+                const isLocked = !isAdmin && currentTierWeight < tierWeight[strat.tier as UserTier];
                 const isActive = config.strategyId === strat.id;
                 
                 return (
                   <div 
                     key={strat.id}
                     onClick={() => !isLocked && triggerSave({...config, strategyId: strat.id})}
-                    className={`relative p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border-2 transition-all flex flex-col justify-between ${
+                    className={`relative p-6 rounded-[2rem] border-2 transition-all flex flex-col justify-between ${
                       isActive ? 'border-primary bg-primary/5 shadow-xl shadow-primary/5' : 'border-gray-800 bg-gray-900/40 hover:border-gray-700'
                     } ${isLocked ? 'opacity-40 grayscale cursor-not-allowed' : 'cursor-pointer'}`}
                   >
@@ -150,7 +153,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
                         <h3 className="text-sm font-black text-white uppercase tracking-widest">{strat.name}</h3>
                         <span className="text-[9px] font-black text-success uppercase">WR {strat.winRate}%</span>
                       </div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase leading-relaxed mb-4">{strat.description}</p>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase leading-relaxed mb-4">{strat.description}</p>
                     </div>
                     <div className="mt-6 flex justify-between items-center">
                        <span className={`text-[8px] font-black uppercase px-2 py-1 rounded ${
@@ -166,7 +169,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
           </section>
 
           {/* ASSET SELECTOR */}
-          <section className="bg-surface rounded-[2rem] md:rounded-[2.5rem] border border-gray-800 p-6 md:p-8 shadow-2xl">
+          <section className="bg-surface rounded-[2.5rem] border border-gray-800 p-8 shadow-2xl">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-warning/20 rounded-2xl"><Layers className="w-6 h-6 text-warning" /></div>
@@ -190,10 +193,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 max-h-[400px] overflow-y-auto pr-4 scrollbar-hide">
               {filteredAssets.map(pair => {
                 const details = PAIR_CONFIGS[pair];
-                const isLocked = currentTierWeight < tierWeight[details.requiredTier as UserTier];
+                const isLocked = !isAdmin && currentTierWeight < tierWeight[details.requiredTier as UserTier];
                 const isSupported = availablePairsForBroker.includes(pair);
                 const isSelected = config.pair === pair;
                 
@@ -206,7 +209,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
                     } ${isLocked || !isSupported ? 'opacity-30 grayscale cursor-not-allowed' : 'cursor-pointer hover:border-gray-700'}`}
                   >
                      <div className="flex justify-between items-start">
-                        <span className={`text-[11px] md:text-xs font-black uppercase tracking-tighter ${isSelected ? 'text-white' : 'text-gray-300'}`}>{pair}</span>
+                        <span className={`text-xs font-black uppercase tracking-tighter ${isSelected ? 'text-white' : 'text-gray-300'}`}>{pair}</span>
                         {isLocked && <Lock className="w-3 h-3 text-gray-600" />}
                      </div>
                      <div className="flex flex-col gap-1">
@@ -223,9 +226,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
           </section>
         </div>
 
-        <div className="col-span-12 lg:col-span-4 space-y-6 md:space-y-8">
-          {/* PAYMENT HUB SECTION */}
-          <section className="bg-surface rounded-[2rem] md:rounded-[2.5rem] border border-gray-800 p-6 md:p-8 shadow-2xl">
+        <div className="col-span-12 lg:col-span-4 space-y-8">
+          {/* VAULT CHANNELS */}
+          <section className="bg-surface rounded-[2.5rem] border border-gray-800 p-8 shadow-2xl">
             <div className="flex items-center gap-4 mb-8">
               <div className="p-3 bg-accent/20 rounded-2xl"><CreditCard className="w-6 h-6 text-accent" /></div>
               <h2 className="text-xl font-black text-white uppercase tracking-tighter">Vault Channels</h2>
@@ -248,13 +251,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
                 onClick={onOpenUpgrade}
                 className="w-full py-4 bg-gray-800 border border-gray-700 text-[10px] font-black uppercase text-gray-400 rounded-2xl hover:bg-gray-700 hover:text-white transition-all"
                >
-                  Verify New Channel
+                  Link New Protocol
                </button>
             </div>
           </section>
 
           {/* RISK & CAPITAL NODE */}
-          <section className="bg-surface rounded-[2rem] md:rounded-[2.5rem] border border-gray-800 p-6 md:p-8 shadow-2xl">
+          <section className="bg-surface rounded-[2.5rem] border border-gray-800 p-8 shadow-2xl">
             <div className="flex items-center gap-4 mb-8">
               <div className="p-3 bg-success/20 rounded-2xl"><ShieldCheck className="w-6 h-6 text-success" /></div>
               <h2 className="text-xl font-black text-white uppercase tracking-tighter">Risk Guard</h2>
@@ -274,7 +277,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
               </div>
 
               <div className="pt-6 border-t border-gray-800">
-                 <label className="text-[10px] text-gray-500 font-black uppercase block mb-4">Staking Protocol</label>
+                 <label className="text-[10px] text-gray-500 font-black uppercase block mb-4">Capital Protocol</label>
                  <div className="grid grid-cols-2 gap-3">
                     {(['FIXED', 'MARTINGALE', 'FIBONACCI', 'COMPOUND'] as StakingPlan[]).map(plan => (
                       <button 
@@ -292,8 +295,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ config, user, onUpdate
             </div>
           </section>
 
-          {/* BRIDGING NODE */}
-          <section className="bg-surface rounded-[2rem] md:rounded-[2.5rem] border border-gray-800 p-6 md:p-8 shadow-2xl">
+          {/* BRIDGE NODE */}
+          <section className="bg-surface rounded-[2.5rem] border border-gray-800 p-8 shadow-2xl">
             <div className="flex items-center gap-4 mb-8">
               <div className="p-3 bg-accent/20 rounded-2xl"><Globe className="w-6 h-6 text-accent" /></div>
               <h2 className="text-xl font-black text-white uppercase tracking-tighter">Bridge Node</h2>

@@ -39,7 +39,7 @@ const App: React.FC = () => {
     }
   });
 
-  // Admin Verification & Simulation State
+  // Admin & Simulation State
   const [isAdminVerified, setIsAdminVerified] = useState(false);
   const [showAdminPasscode, setShowAdminPasscode] = useState(false);
   const [adminPasscodeInput, setAdminPasscodeInput] = useState('');
@@ -60,8 +60,9 @@ const App: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<string>('--:--:--');
   
-  // TIER LOGIC: effectiveTier uses simulatedTier if available, otherwise actual user tier
-  const effectiveTier = simulatedTier || user?.tier || 'BASIC';
+  // TIER LOGIC: Admin (Alex) has no restrictions (VIP equivalent), others use their tier or simulation
+  const isAdmin = user?.name === 'Alex' || user?.role === 'ROOT';
+  const effectiveTier = isAdmin ? (simulatedTier || 'VIP') : (user?.tier || 'BASIC');
 
   const [config, setConfig] = useState<BotConfig>(() => ({
     isActive: false, 
@@ -85,7 +86,7 @@ const App: React.FC = () => {
     defaultTakeProfit: 4
   }));
 
-  // Sync config tier when effectiveTier changes
+  // Automatically update config tier when simulation or user tier changes
   useEffect(() => {
     setConfig(prev => ({ ...prev, tier: effectiveTier }));
   }, [effectiveTier]);
@@ -96,8 +97,6 @@ const App: React.FC = () => {
   const [currentPrice, setCurrentPrice] = useState(0);
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-
-  const isAdmin = user?.name === 'Alex' || user?.role === 'ROOT';
 
   useEffect(() => {
     const ticker = setInterval(() => {
@@ -116,15 +115,19 @@ const App: React.FC = () => {
     if (!config.isActive || isAnalyzing || marketData.length < 5) return;
     setIsAnalyzing(true);
     try {
-      const result = await analyzeMarket(marketData, config.pair, config.tier, ["Policy Shift Alert", "Liquidity Surge"]);
+      const result = await analyzeMarket(marketData, config.pair, config.tier, ["Policy Shift", "Liquidity Surge"]);
       setAnalysis(result);
       setLastSyncTime(new Date().toLocaleTimeString());
       
-      // AI-Driven Strategy Selection
+      // AI Strategy Selection
       if (config.useAiSignals && result.recommendedStrategyId && result.recommendedStrategyId !== config.strategyId) {
         const recommendedStrat = STRATEGIES.find(s => s.id === result.recommendedStrategyId);
         const tierWeight = { 'BASIC': 0, 'PRO': 1, 'VIP': 2 };
-        if (recommendedStrat && tierWeight[config.tier] >= tierWeight[recommendedStrat.tier as UserTier]) {
+        
+        // Admins bypass tier weight check unless simulating
+        const hasAccess = isAdmin || (recommendedStrat && tierWeight[config.tier] >= tierWeight[recommendedStrat.tier as UserTier]);
+        
+        if (recommendedStrat && hasAccess) {
           setConfig(prev => ({ ...prev, strategyId: result.recommendedStrategyId! }));
         }
       }
@@ -146,17 +149,17 @@ const App: React.FC = () => {
             mode: user!.mode,
             stopLoss: result.stopLoss,
             takeProfit: result.takeProfit,
-            executionLogs: [`AI Entry: ${result.recommendedStrategyId}`]
+            executionLogs: [`Logic Exec: ${result.recommendedStrategyId}`]
           };
           setTrades(prev => [newTrade, ...prev]);
         }
       }
     } catch (e) { 
-      console.error("Analysis Failed:", e); 
+      console.error("Analysis Link Failed:", e); 
     } finally { 
       setIsAnalyzing(false); 
     }
-  }, [config, isAnalyzing, marketData, user, currentPrice]);
+  }, [config, isAnalyzing, marketData, user, currentPrice, isAdmin]);
 
   useEffect(() => {
     const aiInterval = setInterval(performAnalysis, 5000);
@@ -167,7 +170,7 @@ const App: React.FC = () => {
     const profile: UserProfile = {
       id: isRoot ? 'MASTER-ROOT' : 'NX-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
       name: isRoot ? 'Alex' : 'Trader',
-      email: isRoot ? 'alex@nexus.ai' : 'user@nexus.ai',
+      email: isRoot ? 'alex.root@nexus.ai' : 'trader@nexus.ai',
       tier: isRoot ? 'VIP' : 'BASIC',
       role: isRoot ? 'ROOT' : 'NONE',
       balance: 10000, mode: 'PAPER', status: 'ACTIVE',
@@ -213,7 +216,7 @@ const App: React.FC = () => {
       {/* ADMIN PASSCODE MODAL */}
       {showAdminPasscode && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
-           <div className="bg-[#0a101f] border border-accent/30 w-full max-w-sm rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden">
+           <div className="bg-[#0a101f] border border-accent/30 w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
               <button onClick={() => setShowAdminPasscode(false)} className="absolute top-6 right-6 text-gray-500 hover:text-white"><X /></button>
               <div className="flex flex-col items-center mb-8">
                  <div className="w-16 h-16 bg-accent/20 rounded-2xl flex items-center justify-center mb-4">
@@ -234,13 +237,13 @@ const App: React.FC = () => {
                       className="w-full bg-black border border-gray-800 rounded-2xl py-3.5 pl-12 pr-4 text-white text-center font-mono tracking-[0.4em] focus:border-accent outline-none"
                     />
                  </div>
-                 <button type="submit" className="w-full py-4 bg-accent text-white font-black uppercase text-[10px] tracking-widest rounded-2xl hover:bg-accent/80 transition-all">Verify Node</button>
+                 <button type="submit" className="w-full py-4 bg-accent text-white font-black uppercase text-[10px] tracking-widest rounded-2xl hover:bg-accent/80 transition-all">Unlock Hub</button>
               </form>
            </div>
         </div>
       )}
 
-      {/* RESPONSIVE SIDEBAR: Sidebar on desktop, Hidden drawer or simple list on mobile */}
+      {/* Sidebar */}
       <aside className={`w-full md:w-20 lg:w-72 bg-[#0a101f] border-r md:flex flex-col p-6 gap-8 z-50 hidden ${isAdmin ? 'border-accent/40 bg-accent/5' : 'border-gray-800'}`}>
         <div className="flex items-center gap-4 px-2">
             <div className={`p-3 rounded-2xl shadow-xl ${isAdmin ? 'bg-accent/20' : 'bg-primary/20'}`}>
@@ -279,50 +282,27 @@ const App: React.FC = () => {
         </nav>
       </aside>
 
-      {/* MOBILE BOTTOM NAVIGATION */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0a101f]/90 backdrop-blur-xl border-t border-gray-800 flex justify-around p-4 z-[90]">
-          <button onClick={() => setActiveView('dashboard')} className={`flex flex-col items-center gap-1 ${activeView === 'dashboard' ? 'text-primary' : 'text-gray-500'}`}>
-            <LayoutDashboard className="w-6 h-6" />
-            <span className="text-[9px] font-black uppercase">Home</span>
-          </button>
-          <button onClick={() => setActiveView('ledger')} className={`flex flex-col items-center gap-1 ${activeView === 'ledger' ? 'text-primary' : 'text-gray-500'}`}>
-            <History className="w-6 h-6" />
-            <span className="text-[9px] font-black uppercase">History</span>
-          </button>
-          <button onClick={() => setActiveView('settings')} className={`flex flex-col items-center gap-1 ${activeView === 'settings' ? 'text-primary' : 'text-gray-500'}`}>
-            <Sliders className="w-6 h-6" />
-            <span className="text-[9px] font-black uppercase">Settings</span>
-          </button>
-          {isAdmin && (
-            <button onClick={() => isAdminVerified ? setActiveView('admin') : setShowAdminPasscode(true)} className={`flex flex-col items-center gap-1 ${activeView === 'admin' ? 'text-accent' : 'text-gray-500'}`}>
-              <Lock className="w-6 h-6" />
-              <span className="text-[9px] font-black uppercase">Admin</span>
-            </button>
-          )}
-      </nav>
-
+      {/* Main UI */}
       <main className="flex-1 relative flex flex-col overflow-hidden pb-20 md:pb-0">
          <header className="h-20 md:h-24 border-b border-gray-800 flex items-center justify-between px-6 md:px-10 bg-[#0a101f]/50 backdrop-blur-3xl z-40">
-            <div className="flex items-center gap-4">
-               <div>
-                  <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] mb-1">Execution Node</h2>
-                  <div className="flex items-center gap-3">
-                     <div className={`w-2 h-2 rounded-full ${config.isActive ? 'bg-success animate-pulse' : 'bg-gray-600'}`}></div>
-                     <span className="text-base md:text-lg font-black text-white tracking-tighter uppercase">{config.pair} <span className="text-gray-600 font-medium hidden sm:inline">/ USD</span></span>
-                  </div>
+            <div>
+               <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] mb-1">Execution Node</h2>
+               <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${config.isActive ? 'bg-success animate-pulse' : 'bg-gray-600'}`}></div>
+                  <span className="text-base md:text-lg font-black text-white tracking-tighter uppercase">{config.pair} <span className="text-gray-600 font-medium hidden sm:inline">/ USD</span></span>
                </div>
             </div>
 
-            <div className="flex items-center gap-3 md:gap-6">
-               {/* TIER SIMULATION TOGGLE (Alex only) */}
+            <div className="flex items-center gap-4 md:gap-6">
+               {/* Simulation Toggle for Admin */}
                {isAdmin && (
                  <div className="hidden lg:flex bg-gray-900 border border-gray-800 p-1 rounded-xl items-center gap-1">
-                    <span className="px-2 text-[8px] font-black text-accent uppercase flex items-center gap-1"><Eye className="w-2.5 h-2.5" /> Sim</span>
+                    <span className="px-2 text-[8px] font-black text-accent uppercase flex items-center gap-1"><Eye className="w-2.5 h-2.5" /> Simulation</span>
                     {(['BASIC', 'PRO', 'VIP'] as UserTier[]).map(t => (
                       <button 
                         key={t}
                         onClick={() => setSimulatedTier(simulatedTier === t ? null : t)}
-                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${simulatedTier === t ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'text-gray-500 hover:text-gray-300'}`}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${simulatedTier === t ? 'bg-accent text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
                       >
                         {t}
                       </button>
@@ -334,41 +314,41 @@ const App: React.FC = () => {
                   <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest mb-1">Sync Time</p>
                   <p className="text-sm font-mono font-black text-primary">{lastSyncTime}</p>
                </div>
-               {!isAdmin && <button onClick={() => setIsUpgradeModalOpen(true)} className="px-4 md:px-5 py-2.5 md:py-3 bg-primary/10 border border-primary/20 rounded-xl text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl shadow-primary/5">Upgrade</button>}
-               <button onClick={() => setIsBrokerModalOpen(true)} className={`p-2.5 md:p-3 border rounded-xl transition-all ${isAdmin ? 'bg-accent/10 border-accent/20 text-accent hover:bg-accent hover:text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                 <Zap className="w-4 h-4 md:w-5 md:h-5" />
+               {!isAdmin && <button onClick={() => setIsUpgradeModalOpen(true)} className="px-5 py-3 bg-primary/10 border border-primary/20 rounded-xl text-[10px] font-black text-primary uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-xl shadow-primary/5">Upgrade</button>}
+               <button onClick={() => setIsBrokerModalOpen(true)} className={`p-3 border rounded-xl transition-all ${isAdmin ? 'bg-accent/10 border-accent/20 text-accent hover:bg-accent hover:text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                 <Zap className="w-5 h-5" />
                </button>
             </div>
          </header>
 
          <div className="flex-1 overflow-y-auto p-6 md:p-10 scrollbar-hide">
             {activeView === 'dashboard' && (
-              <div className="grid grid-cols-12 gap-6 md:gap-8">
-                 <div className="col-span-12 xl:col-span-8 space-y-6 md:space-y-8">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+              <div className="grid grid-cols-12 gap-8">
+                 <div className="col-span-12 xl:col-span-8 space-y-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                        <StatsCard label="Net Profit" value={`$${user?.stats.totalProfit.toFixed(2)}`} trend="14.2%" trendUp icon={Activity} />
                        <StatsCard label="Win Rate" value={`${user?.stats.winRate}%`} trend="3.5%" trendUp icon={Target} color="text-success" />
                        <StatsCard label="Session Drawdown" value={`${user?.stats.drawdown}%`} trend="0.8%" icon={Shield} color="text-danger" />
                     </div>
                     
-                    <div className="bg-surface p-5 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border border-gray-800 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="bg-surface p-6 rounded-[2rem] border border-gray-800 shadow-xl flex items-center justify-between">
                        <div className="flex items-center gap-4">
                           <div className="p-3 bg-accent/20 rounded-2xl"><Cpu className="w-6 h-6 text-accent" /></div>
-                          <div className="text-center sm:text-left">
-                             <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Neural Strategy Logic</p>
-                             <div className="flex items-center gap-2 justify-center sm:justify-start">
+                          <div>
+                             <p className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Active Intelligence Logic</p>
+                             <div className="flex items-center gap-2">
                                 <h3 className="text-lg font-black text-white uppercase tracking-tighter">
                                    {STRATEGIES.find(s => s.id === config.strategyId)?.name || "Neural RSI Momentum"}
                                 </h3>
                                 {config.useAiSignals && (
                                     <span className="flex items-center gap-1 bg-primary/10 text-primary text-[8px] font-black uppercase px-2 py-0.5 rounded border border-primary/20">
-                                       <Zap className="w-2 h-2" /> AI Managed
+                                       <Zap className="w-2 h-2" /> AI Optimized
                                     </span>
                                 )}
                              </div>
                           </div>
                        </div>
-                       <div className="text-[9px] font-black text-accent uppercase tracking-[0.2em] bg-accent/5 px-4 py-2 rounded-full border border-accent/20">
+                       <div className="text-[9px] font-black text-accent uppercase tracking-widest bg-accent/10 px-4 py-2 rounded-full border border-accent/20">
                           {effectiveTier} Tier Active
                        </div>
                     </div>
@@ -391,7 +371,7 @@ const App: React.FC = () => {
             )}
             
             {activeView === 'ledger' && <TradeHistory trades={trades} onExecuteSignal={() => {}} />}
-            {activeView === 'settings' && <SettingsTab config={config} user={user!} onUpdateConfig={setConfig} onOpenUpgrade={() => setIsUpgradeModalOpen(true)} />}
+            {activeView === 'settings' && <SettingsTab config={config} user={user!} isAdmin={isAdmin} onUpdateConfig={setConfig} onOpenUpgrade={() => setIsUpgradeModalOpen(true)} />}
             {activeView === 'admin' && isAdmin && (
               <AdminTab 
                 users={managedUsers} 
@@ -410,12 +390,7 @@ const App: React.FC = () => {
         onClose={() => setIsBrokerModalOpen(false)} 
         onConnect={(broker, isLive, type) => {
           if(!user) return;
-          const updatedUser = { 
-            ...user, 
-            connectedBroker: broker, 
-            isLiveAccount: isLive, 
-            mode: (isLive ? 'LIVE' : 'PAPER') as any 
-          };
+          const updatedUser = { ...user, connectedBroker: broker, isLiveAccount: isLive, mode: (isLive ? 'LIVE' : 'PAPER') as any };
           setUser(updatedUser);
           localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
         }} 
