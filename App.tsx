@@ -53,15 +53,14 @@ const App: React.FC = () => {
   ]);
 
   const [gatewayConfigs, setGatewayConfigs] = useState<GatewayConfig[]>([
-    { name: 'PAYSTACK', publicKey: 'pk_live_0000000000000', secretKey: 'sk_live_1111111111111', webhookUrl: 'https://api.nexus.ai/webhooks/paystack', isActive: true },
-    { name: 'FLUTTERWAVE', publicKey: 'FLWPUBK-0000000000000', secretKey: 'FLWSECK-1111111111111', webhookUrl: 'https://api.nexus.ai/webhooks/flutterwave', isActive: true },
+    { name: 'PAYSTACK', publicKey: 'pk_live_00000', secretKey: 'sk_live_11111', webhookUrl: 'https://api.nexus.ai/webhooks/paystack', isActive: true },
+    { name: 'FLUTTERWAVE', publicKey: 'FLWPUBK-00000', secretKey: 'FLWSECK-11111', secretHash: 'NEXUS_HASH', webhookUrl: 'https://api.nexus.ai/webhooks/flutterwave', isActive: true },
   ]);
 
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [marketData, setMarketData] = useState<MarketDataPoint[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   
-  // Only "Alex" with ROOT role gets Admin Access
   const isAdmin = user?.role === 'ROOT' && user?.name === 'Alex';
   const effectiveTier = isAdmin ? 'VIP' : (user?.tier || 'BASIC');
 
@@ -199,7 +198,6 @@ const App: React.FC = () => {
   return (
     <div className={`min-h-screen bg-[#070b14] text-gray-100 flex flex-col md:flex-row overflow-hidden font-sans ${isAdmin ? 'border-4 border-amber-500/20' : ''}`}>
       
-      {/* Sidebar */}
       <aside className={`w-full md:w-20 lg:w-72 bg-[#0a101f] border-r md:flex flex-col p-6 gap-8 z-50 hidden ${isAdmin ? 'border-amber-500/30 bg-amber-500/5' : 'border-gray-800'}`}>
         <div className="flex items-center gap-4 px-2">
             <div className={`p-2 rounded-2xl shadow-xl transition-all hover:scale-105`}>
@@ -208,7 +206,7 @@ const App: React.FC = () => {
             <div className="hidden lg:block">
                <h1 className="text-xl font-black text-white uppercase tracking-tighter">NexusTrade</h1>
                <span className={`text-[10px] font-black uppercase tracking-widest opacity-60 ${isAdmin ? 'text-amber-500' : 'text-gray-500'}`}>
-                 HFT Protocol v3.6
+                 HFT Protocol v4.5
                </span>
             </div>
         </div>
@@ -237,7 +235,6 @@ const App: React.FC = () => {
             )}
         </nav>
 
-        {/* Live Status */}
         <div className="hidden lg:flex flex-col gap-3 mt-auto border-t border-gray-800 pt-6">
             <div className="flex items-center justify-between mb-1 px-2">
                 <div className="flex items-center gap-2">
@@ -252,7 +249,6 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main UI */}
       <main className="flex-1 relative flex flex-col overflow-hidden pb-20 md:pb-0">
          <header className="h-20 md:h-24 border-b border-gray-800 flex items-center justify-between px-6 md:px-10 bg-[#0a101f]/50 backdrop-blur-3xl z-40">
             <div className="flex items-center gap-4">
@@ -266,10 +262,6 @@ const App: React.FC = () => {
                         <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Node Holder</p>
                         <p className="text-[11px] font-black text-white uppercase">{user?.name}</p>
                     </div>
-                </div>
-                <div className="hidden lg:flex flex-col border-l border-gray-800 pl-4">
-                    <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Asset Stream</span>
-                    <span className="text-[13px] font-black text-white uppercase tracking-tighter">{config.pair}</span>
                 </div>
             </div>
 
@@ -350,6 +342,7 @@ const App: React.FC = () => {
           localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
         }}
         userEmail={user?.email}
+        userName={user?.name}
         userId={user?.id}
       />
     </div>

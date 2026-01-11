@@ -2,7 +2,8 @@
 import React, { useState, useRef } from 'react';
 import { UserProfile, UserTier, GatewayConfig } from '../types';
 import { PaymentLog } from '../App';
-import { Users, ShieldAlert, Star, Ban, CheckCircle, TrendingUp, DollarSign, UserPlus, CreditCard, Landmark, CheckCircle2, Clock, Settings, Key, Globe, Search, Filter, Smartphone, Zap, Save, AlertTriangle, Eye, EyeOff, Trash2, Lock, Upload, Image as ImageIcon } from 'lucide-react';
+// Added ShieldCheck to the imports to resolve the reference error in the GATEWAYS section.
+import { Users, ShieldAlert, ShieldCheck, Star, Ban, CheckCircle, TrendingUp, DollarSign, UserPlus, CreditCard, Landmark, CheckCircle2, Clock, Settings, Key, Globe, Search, Filter, Smartphone, Zap, Save, AlertTriangle, Eye, EyeOff, Trash2, Lock, Upload, Image as ImageIcon } from 'lucide-react';
 import { NEXUS_LOGO } from '../assets';
 
 interface AdminTabProps {
@@ -30,14 +31,13 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Security State
   const [paymentsUnlocked, setPaymentsUnlocked] = useState(false);
   const [passcodeInput, setPasscodeInput] = useState('');
-  const ROOT_PASSCODE = '09162502987';
+  const ROOT_PASSCODE = '08126972446';
 
   const handleGatewayChange = (index: number, field: keyof GatewayConfig, value: string | boolean) => {
     const updated = [...editedGateways];
-    updated[index] = { ...updated[index], [field]: value };
+    updated[index] = { ...updated[index], [field]: value } as any;
     setEditedGateways(updated);
   };
 
@@ -87,12 +87,11 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
           <div>
             <h1 className="text-6xl font-black text-white uppercase tracking-tighter italic">Alex Root Node</h1>
             <p className="text-accent/60 font-black uppercase tracking-[0.4em] text-[10px] flex items-center gap-2 mt-1">
-              Cluster Maintenance Hub v3.6
+              Cluster Maintenance Hub v4.5
             </p>
           </div>
         </div>
         
-        {/* Maintenance Metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
            <div className="bg-surface border border-gray-800 px-6 py-5 rounded-[2rem] flex flex-col items-center shadow-2xl">
               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Live Nodes</span>
@@ -374,6 +373,21 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                                        />
                                    </div>
                                </div>
+                               {gw.name === 'FLUTTERWAVE' && (
+                                 <div className="space-y-3">
+                                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Webhook Secret Hash</label>
+                                   <div className="relative">
+                                       <ShieldCheck className="absolute left-5 top-5 w-4 h-4 text-gray-700" />
+                                       <input 
+                                          type="text" 
+                                          value={gw.secretHash || ''} 
+                                          onChange={(e) => handleGatewayChange(idx, 'secretHash', e.target.value)}
+                                          className="w-full bg-black border border-gray-800 rounded-3xl py-5 pl-14 pr-6 text-xs text-white font-mono outline-none focus:border-primary transition-all" 
+                                          placeholder="Enter verification hash..."
+                                       />
+                                   </div>
+                                 </div>
+                               )}
                                <div className="space-y-3">
                                    <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Webhook Endpoint URL</label>
                                    <div className="relative">
@@ -389,16 +403,6 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                            </div>
                         </div>
                       ))}
-                  </div>
-
-                  <div className="mt-16 p-10 bg-amber-500/10 border border-amber-500/30 rounded-[3rem] flex items-center gap-8">
-                      <div className="p-5 bg-amber-500/20 rounded-full">
-                          <AlertTriangle className="w-10 h-10 text-amber-500" />
-                      </div>
-                      <div>
-                          <p className="text-sm font-black text-amber-500 uppercase tracking-widest">Administrative Guard Policy</p>
-                          <p className="text-xs text-gray-400 font-bold uppercase leading-relaxed mt-2 max-w-4xl italic">Sensitive keys are decrypted for Alex root sessions only. Syncing incorrect keys will immediately disrupt settlement provisioning for all live nodes.</p>
-                      </div>
                   </div>
               </section>
           )}

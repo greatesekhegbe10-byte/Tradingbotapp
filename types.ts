@@ -26,6 +26,7 @@ export interface GatewayConfig {
   publicKey: string;
   secretKey: string;
   webhookUrl: string;
+  secretHash?: string; // Specific for Flutterwave
   isActive: boolean;
 }
 

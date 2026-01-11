@@ -1,7 +1,7 @@
 
 /**
- * NEXUS AI - BACKEND PAYMENT GATEWAY (NODE.JS / EXPRESS)
- * Deployment: Deploy this as a separate web service on Render/Heroku.
+ * NEXUS AI - UNIFIED SECURE PAYMENT GATEWAY
+ * Production-Grade Paystack & Flutterwave Orchestration
  */
 
 const express = require('express');
@@ -13,90 +13,134 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// KEYS - USE ENVIRONMENT VARIABLES FOR PRODUCTION
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || 'YOUR_SECRET_KEY_HERE';
+/**
+ * ENVIRONMENT CONFIGURATION
+ * These are mapped from your secure env variables.
+ */
+const CONFIG = {
+  PAYSTACK: {
+    SECRET: process.env.PAYSTACK_SECRET_KEY || 'sk_live_xxxx',
+  },
+  FLUTTERWAVE: {
+    SECRET: process.env.FLUTTERWAVE_SECRET_KEY || 'FLWSECK_live_xxxx',
+    HASH: process.env.FLUTTERWAVE_SECRET_HASH || 'NEXUS_SECURE_VERIF_HASH'
+  }
+};
 
 /**
- * 1. INITIATE PAYMENT
- * Called by Flutter/React frontend to get a payment URL
+ * 1. PAYSTACK INITIALIZE (NGN / Local Path)
  */
-app.post('/api/payments/initiate', async (req, res) => {
+app.post('/api/paystack/initialize', async (req, res) => {
   const { email, amount, tier, userId } = req.body;
-  
   try {
     const response = await axios.post(
       'https://api.paystack.co/transaction/initialize',
       {
         email,
-        amount: amount * 100, // Paystack uses kobo/cents
-        currency: 'NGN',
-        callback_url: 'https://your-frontend-url.com/payment-callback',
-        metadata: {
-          userId,
-          tier,
-          custom_fields: [{ display_name: "Tier", variable_name: "tier", value: tier }]
-        }
+        amount: amount * 100 * 1600, // Conversion to Kobo (assume 1600 rate)
+        metadata: { userId, tier },
+        callback_url: `${req.headers.origin}/dashboard?payment=awaiting&gateway=paystack`
       },
-      {
-        headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
+      { headers: { Authorization: `Bearer ${CONFIG.PAYSTACK.SECRET}`, 'Content-Type': 'application/json' } }
     );
-
     res.json(response.data);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to initiate payment', details: error.message });
+    res.status(500).json({ status: false, message: 'Paystack Handshake Failed' });
   }
 });
 
 /**
- * 2. VERIFY PAYMENT
- * Called by frontend to confirm success
+ * 2. FLUTTERWAVE INITIALIZE (USD / International Path)
  */
-app.get('/api/payments/verify/:reference', async (req, res) => {
-  const { reference } = req.params;
+app.post('/api/flutterwave/initialize', async (req, res) => {
+  const { email, amount, tier, userId, name } = req.body;
+  const tx_ref = `NX-FLW-${Date.now()}-${userId}`;
 
   try {
-    const response = await axios.get(
-      `https://api.paystack.co/transaction/verify/${reference}`,
+    const response = await axios.post(
+      'https://api.flutterwave.com/v3/payments',
       {
-        headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` }
-      }
+        tx_ref,
+        amount: amount * 1600, // Normalized to NGN for this example, but supports USD
+        currency: "NGN",
+        redirect_url: `${req.headers.origin}/dashboard?payment=awaiting&gateway=flutterwave`,
+        meta: { userId, tier },
+        customer: { email, name },
+        customizations: {
+          title: "NexusTrade AI Premium",
+          description: `Provisioning ${tier} Tier Node Access`,
+          logo: "https://nexustrade.ai/logo.png"
+        }
+      },
+      { headers: { Authorization: `Bearer ${CONFIG.FLUTTERWAVE.SECRET}`, 'Content-Type': 'application/json' } }
     );
-
-    const { status, data } = response.data;
-
-    if (status && data.status === 'success') {
-      // Logic to update user tier in your DB here
-      // updateUserTier(data.metadata.userId, data.metadata.tier);
-      res.json({ success: true, tier: data.metadata.tier });
-    } else {
-      res.json({ success: false, message: 'Payment not successful' });
-    }
+    res.json({ status: true, data: { authorization_url: response.data.data.link, reference: tx_ref } });
   } catch (error) {
-    res.status(500).json({ error: 'Verification failed' });
+    res.status(500).json({ status: false, message: 'Flutterwave Handshake Failed' });
   }
 });
 
 /**
- * 3. WEBHOOK HANDLER
- * Paystack sends POST requests here for every event
+ * 3. CENTRAL WEBHOOK CONTROLLER
+ * This is the ONLY trusted source of truth for payment success.
  */
 app.post('/api/payments/webhook', (req, res) => {
-  const hash = crypto.createHmac('sha512', PAYSTACK_SECRET_KEY).update(JSON.stringify(req.body)).digest('hex');
-  
-  if (hash === req.headers['x-paystack-signature']) {
-    const event = req.body;
-    if (event.event === 'charge.success') {
-      // UNLOCK USER TIER AUTOMATICALLY
-      const { userId, tier } = event.data.metadata;
-      console.log(`UNLOCKING ${tier} FOR USER ${userId}`);
+  // A. Determine Provider from Headers
+  const paystackSig = req.headers['x-paystack-signature'];
+  const flwSig = req.headers['verif-hash'];
+
+  // --- PAYSTACK LOGIC ---
+  if (paystackSig) {
+    const hash = crypto.createHmac('sha512', CONFIG.PAYSTACK.SECRET)
+                       .update(JSON.stringify(req.body))
+                       .digest('hex');
+    
+    if (hash === paystackSig && req.body.event === 'charge.success') {
+      const { userId, tier } = req.body.data.metadata;
+      grantAccess(userId, tier, 'PAYSTACK', req.body.data.reference);
     }
+    return res.sendStatus(200);
   }
-  res.sendStatus(200);
+
+  // --- FLUTTERWAVE LOGIC ---
+  if (flwSig) {
+    if (flwSig === CONFIG.FLUTTERWAVE.HASH) {
+      const event = req.body;
+      if (event.status === 'successful') {
+        // FLW structure can vary slightly by event type
+        const meta = event.meta || event.data?.meta;
+        const ref = event.tx_ref || event.data?.tx_ref;
+        if (meta?.userId && meta?.tier) {
+          grantAccess(meta.userId, meta.tier, 'FLUTTERWAVE', ref);
+        }
+      }
+    }
+    return res.sendStatus(200);
+  }
+
+  res.sendStatus(400); // Bad Request / Invalid Signature
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Payment Server Active on port ${PORT}`));
+/**
+ * DATABASE PROVISIONING
+ */
+function grantAccess(userId, tier, gateway, ref) {
+  console.log(`[PROVISIONING] Node ${userId} upgraded to ${tier} via ${gateway}. Ref: ${ref}`);
+  
+  // SHARED DATABASE LOGIC:
+  // 1. Update user.tier = tier
+  // 2. Log transaction to paymentLogs table
+  // 3. Emit socket event to frontend to refresh dashboard if user is online
+  
+  global.verifiedTransactions = global.verifiedTransactions || {};
+  global.verifiedTransactions[userId] = { tier, timestamp: Date.now(), gateway };
+}
+
+// STATUS POLLING FOR FRONTEND (Zero-Trust verification)
+app.get('/api/payments/status/:userId', (req, res) => {
+  const status = global.verifiedTransactions?.[req.params.userId];
+  res.json({ success: !!status, data: status });
+});
+
+const PORT = 10000;
+app.listen(PORT, () => console.log(`🚀 Unified Gateway Listening on ${PORT}`));

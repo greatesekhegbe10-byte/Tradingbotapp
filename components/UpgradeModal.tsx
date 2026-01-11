@@ -1,24 +1,41 @@
 
-import React, { useState } from 'react';
-import { X, Check, Crown, Loader2, Zap, CreditCard, Landmark, Smartphone, ChevronRight, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Check, Crown, Loader2, Zap, CreditCard, Landmark, Smartphone, ChevronRight, ArrowRight, ShieldCheck, Globe, ZapIcon } from 'lucide-react';
 import { UserTier, PaymentGateway } from '../types';
-import { initiateTierPayment, verifyTierPayment } from '../services/paymentService';
+import { initiateTierPayment, pollPaymentStatus } from '../services/paymentService';
 
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgrade: (tier: UserTier, gateway: PaymentGateway) => void;
   userEmail?: string;
+  userName?: string;
   userId?: string;
 }
 
-export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onUpgrade, userEmail = "trader@nexus.ai", userId = "USER-1" }) => {
+export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onUpgrade, userEmail = "trader@nexus.ai", userName = "Trader", userId = "USER-1" }) => {
   const [showPayment, setShowPayment] = useState(false);
-  const [paymentStep, setPaymentStep] = useState<'GATEWAY_SELECT' | 'BANK_TRANSFER' | 'PROCESSING'>('GATEWAY_SELECT');
+  const [paymentStep, setPaymentStep] = useState<'GATEWAY_SELECT' | 'REDIRECTING' | 'WAITING_WEBHOOK'>('GATEWAY_SELECT');
   const [pendingTier, setPendingTier] = useState<UserTier>('BASIC');
-  const [selectedGateway, setSelectedGateway] = useState<PaymentGateway>('PAYSTACK');
+  const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | 'AUTO'>('AUTO');
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentRef, setPaymentRef] = useState('');
+
+  // Auto-polling for status when in WAITING_WEBHOOK state
+  useEffect(() => {
+    let interval: any;
+    if (paymentStep === 'WAITING_WEBHOOK' && userId) {
+      interval = setInterval(async () => {
+        const res = await pollPaymentStatus(userId);
+        if (res.success) {
+          clearInterval(interval);
+          onUpgrade(pendingTier, res.data.gateway);
+          onClose();
+        }
+      }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [paymentStep, userId, pendingTier, onUpgrade, onClose]);
 
   if (!isOpen) return null;
 
@@ -28,41 +45,38 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onU
     { id: 'VIP' as UserTier, name: 'VIP', price: '$300', numericPrice: 300, features: ['All 200+ Assets', 'HFT Sniper Logic', 'Priority Global Nodes'], color: 'purple' }
   ];
 
-  const handleInitiate = async (tier: UserTier, amount: number) => {
+  const handleInitiate = async (tier: UserTier) => {
     setPendingTier(tier);
     setShowPayment(true);
     setPaymentStep('GATEWAY_SELECT');
   };
 
-  const startPayment = async (gateway: PaymentGateway) => {
+  const startPayment = async (gateway: PaymentGateway | 'AUTO') => {
     setSelectedGateway(gateway);
     setIsProcessing(true);
+    setPaymentStep('REDIRECTING');
+
     try {
-      const amount = tiers.find(t => t.id === pendingTier)?.numericPrice || 0;
-      const res = await initiateTierPayment(userEmail, amount, pendingTier, userId);
-      if (res.status) {
+      const tierData = tiers.find(t => t.id === pendingTier);
+      const amount = tierData?.numericPrice || 0;
+      
+      const res = await initiateTierPayment(userEmail, amount, pendingTier, userId!, gateway, userName);
+      
+      if (res.status && res.data.authorization_url) {
         setPaymentRef(res.data.reference);
-        setPaymentStep('BANK_TRANSFER');
+        // We simulate waiting state if user is already redirected, or we can just let the redirect happen.
+        // In a real app, user goes to new tab/window.
+        window.location.href = res.data.authorization_url;
+        
+        // After small delay, set step to waiting for when they return
+        setTimeout(() => setPaymentStep('WAITING_WEBHOOK'), 1000);
       }
     } catch (e) {
-      alert("Payment initiation failed.");
+      alert("Billing Error: Protocol communication interrupted.");
+      setPaymentStep('GATEWAY_SELECT');
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const finalizeUpgrade = async () => {
-    setPaymentStep('PROCESSING');
-    setIsProcessing(true);
-    const res = await verifyTierPayment(paymentRef);
-    setTimeout(() => {
-        if (res.success) {
-            onUpgrade(pendingTier, selectedGateway);
-            onClose();
-            setShowPayment(false);
-          }
-          setIsProcessing(false);
-    }, 2000);
   };
 
   return (
@@ -101,7 +115,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onU
                         {tier.numericPrice > 0 ? (
                            <button 
                             disabled={isProcessing}
-                            onClick={() => handleInitiate(tier.id, tier.numericPrice)}
+                            onClick={() => handleInitiate(tier.id)}
                             className={`w-full py-5 rounded-[2rem] font-black uppercase text-xs tracking-widest transition-all shadow-xl active:scale-95 ${
                                 tier.id === 'VIP' ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20' : 'bg-yellow-500 hover:bg-yellow-400 text-black shadow-yellow-900/20'
                             }`}
@@ -117,37 +131,49 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onU
           </div>
         ) : (
           <div className="max-w-md mx-auto bg-[#0a101f] border border-gray-800 rounded-[3.5rem] p-12 text-center animate-scale-up shadow-2xl shadow-black/80">
-              {paymentStep === 'PROCESSING' ? (
+              {paymentStep === 'REDIRECTING' ? (
                 <div className="py-20 flex flex-col items-center">
                     <Loader2 className="w-16 h-16 text-primary animate-spin mb-6" />
-                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Settlement Node</h2>
-                    <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em] mt-3">Syncing with {selectedGateway} Gateway</p>
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Redirecting...</h2>
+                    <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em] mt-3">Connecting to Secure Gateway Node</p>
                 </div>
               ) : paymentStep === 'GATEWAY_SELECT' ? (
                 <div className="animate-fade-in">
                     <div className="w-24 h-24 bg-primary/10 rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 border border-primary/20">
                         <CreditCard className="w-12 h-12 text-primary" />
                     </div>
-                    <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-3">Billing Method</h2>
-                    <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-10">Select your preferred Nigerian gateway.</p>
+                    <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-3">Billing Gateway</h2>
+                    <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-10">Select an institutional settlement node.</p>
                     
                     <div className="space-y-4 mb-10">
-                        <button onClick={() => startPayment('PAYSTACK')} className="w-full p-6 bg-gray-900 border border-gray-800 rounded-[2rem] flex items-center justify-between group hover:border-primary transition-all">
+                        <button onClick={() => startPayment('AUTO')} className="w-full p-6 bg-primary/10 border border-primary/40 rounded-[2rem] flex items-center justify-between group hover:bg-primary/20 transition-all">
                             <div className="flex items-center gap-5">
-                                <div className="p-3 bg-primary/10 rounded-2xl"><Smartphone className="w-6 h-6 text-primary" /></div>
+                                <div className="p-3 bg-primary/20 rounded-2xl"><ZapIcon className="w-6 h-6 text-primary" /></div>
                                 <div className="text-left">
-                                    <p className="text-xs text-white font-black uppercase tracking-widest">Paystack</p>
-                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Card / Transfer / USSD</p>
+                                    <p className="text-xs text-white font-black uppercase tracking-widest">Smart Routing</p>
+                                    <p className="text-[9px] text-primary font-bold uppercase">Optimal Gateway for {userEmail?.split('@')[1]}</p>
                                 </div>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-gray-700 group-hover:text-primary" />
+                            <ChevronRight className="w-5 h-5 text-primary" />
                         </button>
+
+                        <button onClick={() => startPayment('PAYSTACK')} className="w-full p-6 bg-gray-900 border border-gray-800 rounded-[2rem] flex items-center justify-between group hover:border-blue-500 transition-all">
+                            <div className="flex items-center gap-5">
+                                <div className="p-3 bg-blue-500/10 rounded-2xl"><Smartphone className="w-6 h-6 text-blue-400" /></div>
+                                <div className="text-left">
+                                    <p className="text-xs text-white font-black uppercase tracking-widest">Paystack Node</p>
+                                    <p className="text-[9px] text-gray-500 font-bold uppercase">NGN / Cards / Transfers</p>
+                                </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-gray-700 group-hover:text-blue-500" />
+                        </button>
+
                         <button onClick={() => startPayment('FLUTTERWAVE')} className="w-full p-6 bg-gray-900 border border-gray-800 rounded-[2rem] flex items-center justify-between group hover:border-success transition-all">
                             <div className="flex items-center gap-5">
-                                <div className="p-3 bg-success/10 rounded-2xl"><Landmark className="w-6 h-6 text-success" /></div>
+                                <div className="p-3 bg-success/10 rounded-2xl"><Globe className="w-6 h-6 text-success" /></div>
                                 <div className="text-left">
-                                    <p className="text-xs text-white font-black uppercase tracking-widest">Flutterwave</p>
-                                    <p className="text-[9px] text-gray-500 font-bold uppercase">Multi-Currency / Barter</p>
+                                    <p className="text-xs text-white font-black uppercase tracking-widest">Flutterwave Node</p>
+                                    <p className="text-[9px] text-gray-500 font-bold uppercase">USD / Intl Cards / Mobile Money</p>
                                 </div>
                             </div>
                             <ChevronRight className="w-5 h-5 text-gray-700 group-hover:text-success" />
@@ -157,35 +183,22 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onU
                     <button onClick={() => setShowPayment(false)} className="text-[10px] text-gray-600 font-black uppercase hover:text-white transition-colors tracking-widest">Return to Node</button>
                 </div>
               ) : (
-                <div className="animate-fade-in text-left">
-                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-8 flex items-center gap-4">
-                        <Landmark className="w-6 h-6 text-primary" /> Verify Transfer
-                    </h2>
-                    <div className="bg-black/60 p-8 rounded-[2.5rem] border border-gray-800 mb-10 space-y-6">
-                        <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Gateway</span>
-                            <span className="text-xs text-primary font-black uppercase">{selectedGateway}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Bank</span>
-                            <span className="text-xs text-white font-black uppercase tracking-tighter">Kuda Bank (Nexus AI)</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Account</span>
-                            <span className="text-sm font-mono font-black text-primary">2076557312</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-4 border-t border-gray-800">
-                            <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Final Price</span>
-                            <span className="text-lg font-mono font-black text-success">#{tiers.find(t=>t.id===pendingTier)?.numericPrice! * 1650}</span>
-                        </div>
+                <div className="animate-fade-in text-center">
+                    <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-8 relative">
+                        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                        <ShieldCheck className="w-6 h-6 text-success absolute bottom-0 right-0" />
                     </div>
-                    <button 
-                        onClick={finalizeUpgrade}
-                        className="w-full py-5 bg-primary text-white font-black uppercase text-xs tracking-widest rounded-[2rem] shadow-2xl shadow-primary/20 mb-6"
-                    >
-                        Sync Transaction Data
-                    </button>
-                    <button onClick={() => setPaymentStep('GATEWAY_SELECT')} className="w-full text-[10px] text-gray-600 font-black uppercase text-center hover:text-white tracking-widest">Back to Protocols</button>
+                    <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-4">Awaiting Settlement</h2>
+                    <p className="text-xs text-gray-500 font-bold uppercase leading-relaxed mb-10 italic">
+                        Node Identity: {userId}<br/>
+                        Settlement must be verified by the cloud protocol before license unlocking. 
+                        This usually takes 10-30 seconds.
+                    </p>
+                    <div className="p-4 bg-gray-900/50 rounded-2xl border border-gray-800 flex items-center gap-4 mb-10">
+                       <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+                       <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Listening for Cloud Webhook...</span>
+                    </div>
+                    <button onClick={() => setPaymentStep('GATEWAY_SELECT')} className="w-full text-[10px] text-gray-600 font-black uppercase text-center hover:text-white tracking-widest">Change Payment Node</button>
                 </div>
               )}
           </div>

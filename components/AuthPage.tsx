@@ -20,7 +20,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [failedAttempts, setFailedAttempts] = useState(0);
 
-  const MASTER_PASSCODE = '09162502987';
+  const MASTER_PASSCODE = '08126972446';
   const ADMIN_NAME = 'Alex';
 
   useEffect(() => {
