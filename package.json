@@ -2,13 +2,15 @@
 {
   "name": "nexustrade-ai",
   "version": "1.0.0",
-  "description": "Intelligent Trading Terminal",
+  "description": "Intelligent Trading Terminal with Integrated Payments",
   "main": "index.js",
   "scripts": {
     "start": "serve -s . -l 10000",
-    "build": "echo 'Static build complete'"
+    "deploy": "gh-pages -d build",
+    "build": "echo 'Ready for production deployment'"
   },
   "dependencies": {
-    "serve": "^14.2.4"
+    "serve": "^14.2.4",
+    "gh-pages": "^6.0.0"
   }
 }

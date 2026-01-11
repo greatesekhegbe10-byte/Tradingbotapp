@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot, Terminal, Zap, Shield } from 'lucide-react';
 import { chatWithAssistant } from '../services/geminiService';
 import { BotConfig } from '../types';
+import { NEXUS_LOGO } from '../assets';
 
 interface Message {
   id: string;
@@ -19,7 +20,7 @@ interface AIChatProps {
 export const AIChat: React.FC<AIChatProps> = ({ marketContext, config }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', sender: 'ai', text: 'Neural Node Online. Ready for instructions. Use commands like "Analyze XAU" or "Switch to Aggressive".', timestamp: new Date() }
+    { id: '1', sender: 'ai', text: 'Nexus Protocol Online. I am your HFT Neural Assistant. Ready for instructions.', timestamp: new Date() }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -66,25 +67,25 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext, config }) => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-3xl shadow-[0_0_30px_rgba(59,130,246,0.4)] flex items-center justify-center hover:scale-110 transition-all z-40 group border border-white/20"
+          className="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-3xl shadow-[0_0_40px_rgba(59,130,246,0.3)] flex items-center justify-center hover:scale-110 transition-all z-40 group border border-white/10"
         >
-          <Terminal className="w-8 h-8 text-white" />
+          <img src={NEXUS_LOGO} alt="Nexus" className="w-10 h-10" />
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-success rounded-full animate-pulse border-2 border-[#070b14]"></span>
         </button>
       )}
 
       {isOpen && (
-        <div className="fixed bottom-8 right-6 w-[calc(100vw-3rem)] sm:w-96 h-[600px] bg-[#0a101f] border border-gray-800 rounded-[2.5rem] shadow-[0_0_100px_rgba(0,0,0,0.8)] z-50 flex flex-col overflow-hidden animate-fade-in">
-          <div className="p-6 bg-gray-800/40 border-b border-gray-800 flex justify-between items-center backdrop-blur-xl">
+        <div className="fixed bottom-8 right-6 w-[calc(100vw-3rem)] sm:w-96 h-[650px] bg-[#0a101f] border border-gray-800 rounded-[3rem] shadow-[0_0_120px_rgba(0,0,0,0.9)] z-50 flex flex-col overflow-hidden animate-fade-in">
+          <div className="p-6 bg-gray-800/40 border-b border-gray-800 flex justify-between items-center backdrop-blur-3xl">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-primary/20 flex items-center justify-center shadow-inner">
-                <Bot className="w-6 h-6 text-primary" />
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-inner">
+                <img src={NEXUS_LOGO} alt="Nexus" className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="font-black text-white text-sm uppercase tracking-tighter">Command Center</h3>
+                <h3 className="font-black text-white text-sm uppercase tracking-tighter">Neural Support</h3>
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-success rounded-full"></span>
-                  <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Neural Link Active</span>
+                  <span className="w-1.5 h-1.5 bg-success rounded-full animate-pulse"></span>
+                  <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Protocol Encrypted</span>
                 </div>
               </div>
             </div>
@@ -93,14 +94,14 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext, config }) => {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-black/20 scrollbar-hide">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-black/30 scrollbar-hide">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div 
-                  className={`max-w-[85%] p-5 rounded-3xl text-xs font-bold leading-relaxed ${
+                  className={`max-w-[88%] p-5 rounded-[1.8rem] text-xs font-bold leading-relaxed ${
                     msg.sender === 'user' 
-                      ? 'bg-primary text-white rounded-br-none shadow-xl shadow-primary/10' 
-                      : 'bg-gray-900 text-gray-300 rounded-bl-none border border-gray-800 shadow-2xl'
+                      ? 'bg-primary text-white rounded-br-none shadow-2xl shadow-primary/10' 
+                      : 'bg-gray-900/80 text-gray-300 rounded-bl-none border border-gray-800 shadow-2xl'
                   }`}
                 >
                   {msg.text}
@@ -109,7 +110,7 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext, config }) => {
             ))}
             {isTyping && (
               <div className="flex justify-start">
-                <div className="bg-gray-900 p-5 rounded-3xl rounded-bl-none border border-gray-800 flex gap-2">
+                <div className="bg-gray-900/80 p-5 rounded-[1.8rem] rounded-bl-none border border-gray-800 flex gap-2">
                   <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
                   <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-100"></div>
                   <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-200"></div>
@@ -119,19 +120,19 @@ export const AIChat: React.FC<AIChatProps> = ({ marketContext, config }) => {
             <div ref={messagesEndRef} />
           </div>
 
-          <form onSubmit={handleSend} className="p-5 border-t border-gray-800 bg-black/40">
+          <form onSubmit={handleSend} className="p-6 border-t border-gray-800 bg-black/40">
             <div className="relative">
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder="EXECUTE COMMAND..."
+                placeholder="Message Nexus AI..."
                 className="w-full bg-gray-900 border border-gray-800 rounded-2xl py-4 pl-6 pr-14 text-xs text-white font-mono placeholder:text-gray-700 outline-none focus:border-primary transition-all"
               />
               <button 
                 type="submit" 
                 disabled={!inputText.trim()}
-                className="absolute right-2 top-2 p-2 bg-primary rounded-xl text-white hover:bg-blue-600 disabled:opacity-50 transition-all"
+                className="absolute right-2 top-2 p-2.5 bg-primary rounded-xl text-white hover:bg-blue-600 disabled:opacity-30 transition-all"
               >
                 <Send className="w-4 h-4" />
               </button>

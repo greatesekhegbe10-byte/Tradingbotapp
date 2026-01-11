@@ -11,32 +11,22 @@ export const analyzeMarket = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const recentPrices = dataHistory.slice(-20).map(d => ({ p: d.price.toFixed(5), v: d.volume }));
   
-  // Create a list of available strategies for the AI to choose from
-  const strategyOptions = STRATEGIES.map(s => `${s.id}: ${s.name} (${s.description})`).join(', ');
-
-  const systemInstructions = `NEXUS NEURAL HFT CORE v23.
-  MISSION: High-precision technical analysis for ${pair}. 
+  const systemInstructions = `NEXUS NEURAL HFT CORE v24.
+  MISSION: High-precision institutional technical analysis for ${pair}. 
   
-  STRATEGY SELECTION PROTOCOL:
-  You must recommend the most suitable strategy ID from this list: [${STRATEGIES.map(s => s.id).join(', ')}].
-  - Use HFT_SNIPER for high volatility or rapid micro-movements.
-  - Use PRO_SENTINEL for strong trending markets with volume confirmation.
-  - Use BASIC_RSI for sideways/ranging markets with clear overbought/oversold levels.
-  - Use VIP_LIQUIDITY for markets with fair value gaps or liquidity voids.
-
   CORE TASKS:
-  1. DEFINE: Market state (e.g., "Aggressive Bullish Breakout").
-  2. PATTERN: Identify candlestick pattern.
-  3. TIMING: Provide entry directive.
-  4. EXECUTION: SL, TP, and Lot Size.
+  1. MARKET SITUATION: Define the current market phase (e.g., "Impulsive Bullish Breakout after Accumulation").
+  2. CANDLESTICK PATTERN: Identify specific price action patterns (e.g., "Bullish Engulfing", "Morning Star").
+  3. RECOMMENDATION: Explicit "BUY", "SELL", or "HOLD".
+  4. EXECUTION PARAMETERS: Provide Stop Loss (SL), Take Profit (TP), and suggested Lot Size (e.g., "0.50").
+  5. TIMING: Provide precise entry directive.
   
-  CONTEXT: Tier ${tier}. News: ${newsItems.join('; ')}.
-  OUTPUT: JSON only. Ensure 'recommendedStrategyId' is one of the valid IDs provided.`;
+  OUTPUT: Strict JSON only. All numeric values must be relative to current price.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", 
-      contents: `DATA: ${JSON.stringify(recentPrices)}\nASSET: ${pair}\nTIER: ${tier}`,
+      model: "gemini-3-pro-preview", 
+      contents: `DATA_FEED: ${JSON.stringify(recentPrices)}\nTARGET_ASSET: ${pair}\nTIER_ACCESS: ${tier}`,
       config: {
         systemInstruction: systemInstructions,
         responseMimeType: "application/json",
@@ -48,7 +38,7 @@ export const analyzeMarket = async (
             marketDefinition: { type: Type.STRING },
             candlestickPattern: { type: Type.STRING },
             entryTiming: { type: Type.STRING },
-            recommendedStrategyId: { type: Type.STRING, description: "The ID of the strategy best suited for this condition." },
+            recommendedStrategyId: { type: Type.STRING },
             reasoning: { type: Type.STRING },
             primarySignal: { type: Type.STRING },
             confirmations: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -59,35 +49,38 @@ export const analyzeMarket = async (
             takeProfit: { type: Type.NUMBER },
             newsContext: { type: Type.STRING }
           },
-          required: ["recommendation", "confidence", "recommendedStrategyId", "stopLoss", "takeProfit"]
+          required: ["recommendation", "confidence", "marketDefinition", "candlestickPattern", "stopLoss", "takeProfit", "suggestedLotSize"]
         }
       }
     });
 
     return JSON.parse(response.text || "{}");
   } catch (e) {
-    console.error("Analysis Failure:", e);
+    console.error("Neural Analysis Failure:", e);
     throw e;
   }
 };
 
+/**
+ * Added chatWithAssistant function to handle AI chat messages with market context.
+ */
 export const chatWithAssistant = async (
   message: string,
   marketContext: string,
   config: BotConfig
 ): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const chat = ai.chats.create({
-    model: 'gemini-3-flash-preview', 
-    config: {
-      systemInstruction: `Nexus AI Assistant. Provide technical trading insights. Current config: ${JSON.stringify(config)}`,
-    },
-  });
-  
   try {
-    const response = await chat.sendMessage({ message });
-    return response.text || "Connection lost.";
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `MARKET_DATA: ${marketContext}\nBOT_CONFIG: ${JSON.stringify(config)}\nUSER_QUERY: ${message}`,
+      config: {
+        systemInstruction: "You are the Nexus Neural Assistant, an expert AI specialized in high-frequency trading and institutional market analysis. Provide technical, professional, and data-driven responses. If requested, analyze trends or explain market concepts concisely."
+      }
+    });
+    return response.text || "I am unable to provide a response at this time.";
   } catch (error) {
-    return "Error processing request.";
+    console.error("Assistant Chat Failure:", error);
+    return "The neural node encountered an error processing your request.";
   }
 };

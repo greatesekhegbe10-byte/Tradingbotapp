@@ -13,6 +13,7 @@ export type TradingMode = 'PAPER' | 'LIVE';
 export type StakingPlan = 'FIXED' | 'MARTINGALE' | 'FIBONACCI' | 'COMPOUND';
 export type SignalMode = 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE';
 export type ConnectionMethod = 'BINARY_API' | 'MT5_EA' | 'META_API' | 'WEBHOOK' | 'CRYPTO_API';
+export type PaymentGateway = 'PAYSTACK' | 'FLUTTERWAVE';
 
 export interface MarketDataPoint {
   time: string;
@@ -20,25 +21,19 @@ export interface MarketDataPoint {
   volume: number;
 }
 
-export interface ConfidenceFactor {
-  label: string;
-  score: number;
-  weight: string;
-}
-
-export interface NewsItem {
-  id: string;
-  time: string;
-  headline: string;
-  impact: 'LOW' | 'MEDIUM' | 'HIGH';
-  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
-  aiInterpretation?: string;
+export interface GatewayConfig {
+  name: PaymentGateway;
+  publicKey: string;
+  secretKey: string;
+  webhookUrl: string;
+  isActive: boolean;
 }
 
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
+  photoURL?: string;
   tier: UserTier;
   role: AdminRole;
   balance: number;
@@ -68,25 +63,20 @@ export interface UserStats {
 export interface AnalysisResult {
   recommendation: TradeType;
   confidence: number; 
-  confidenceFactors: ConfidenceFactor[];
   reasoning: string;
   primarySignal: string;
   confirmations: string[];
   sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
-  sniperScore: number;
   volatility: 'LOW' | 'MEDIUM' | 'HIGH';
-  strategyExplanation: string;
   suggestedLotSize: string;
-  suggestedMode: SignalMode;
   stopLoss: number;
   takeProfit: number;
   newsContext: string;
-  policyImpact: string;
-  candlestickPattern?: string;
-  marketDefinition?: string;
-  entryTiming?: string;
+  candlestickPattern: string;
+  marketDefinition: string;
+  entryTiming: string;
+  recommendedStrategyId: string;
   activeStrategyName?: string;
-  recommendedStrategyId?: string;
 }
 
 export interface SignalBreakdown {
@@ -96,6 +86,14 @@ export interface SignalBreakdown {
   score: number;
   isBlocked: boolean;
   blockReason: string;
+}
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  timestamp: string;
+  source: string;
 }
 
 export interface Trade {
@@ -138,52 +136,27 @@ export interface BotConfig {
 }
 
 export const PAIR_CONFIGS: Record<string, any> = {
+  // Majors
   'EUR/USD': { name: 'Euro Dollar', precision: 5, requiredTier: 'BASIC' },
   'GBP/USD': { name: 'Pound Dollar', precision: 5, requiredTier: 'BASIC' },
   'USD/JPY': { name: 'Dollar Yen', precision: 3, requiredTier: 'BASIC' },
+  'USD/CHF': { name: 'Dollar Swiss', precision: 5, requiredTier: 'PRO' },
+  'USD/CAD': { name: 'Dollar Loonie', precision: 5, requiredTier: 'PRO' },
   'AUD/USD': { name: 'Aussie Dollar', precision: 5, requiredTier: 'BASIC' },
-  'USD/CAD': { name: 'Dollar Loonie', precision: 5, requiredTier: 'BASIC' },
-  'BTC/USD': { name: 'Bitcoin', precision: 2, requiredTier: 'BASIC' },
-  'ETH/USD': { name: 'Ethereum', precision: 2, requiredTier: 'BASIC' },
-  'XAU/USD': { name: 'Gold', precision: 2, requiredTier: 'BASIC' },
-  'GBP/JPY': { name: 'Pound Yen', precision: 3, requiredTier: 'BASIC' },
+  'NZD/USD': { name: 'Kiwi Dollar', precision: 5, requiredTier: 'PRO' },
+  // Minors
+  'EUR/GBP': { name: 'Euro Pound', precision: 5, requiredTier: 'PRO' },
+  'EUR/AUD': { name: 'Euro Aussie', precision: 5, requiredTier: 'VIP' },
+  'GBP/JPY': { name: 'Pound Yen', precision: 3, requiredTier: 'PRO' },
+  'CHF/JPY': { name: 'Swiss Yen', precision: 3, requiredTier: 'VIP' },
   'EUR/JPY': { name: 'Euro Yen', precision: 3, requiredTier: 'BASIC' },
+  'GBP/CAD': { name: 'Pound Loonie', precision: 5, requiredTier: 'VIP' },
+  'AUD/JPY': { name: 'Aussie Yen', precision: 3, requiredTier: 'PRO' },
+  // Commodities/Crypto
+  'XAU/USD': { name: 'Gold Spot', precision: 2, requiredTier: 'BASIC' },
+  'BTC/USD': { name: 'Bitcoin', precision: 2, requiredTier: 'BASIC' },
+  'ETH/USD': { name: 'Ethereum', precision: 2, requiredTier: 'PRO' },
 };
-
-const currencies = ['EUR', 'GBP', 'AUD', 'NZD', 'USD', 'CAD', 'CHF', 'JPY', 'ZAR', 'MXN', 'TRY', 'SGD', 'HKD', 'NOK', 'SEK', 'DKK', 'PLN', 'HUF', 'ILS', 'THB'];
-const cryptos = ['SOL', 'ADA', 'DOT', 'LINK', 'MATIC', 'XRP', 'AVAX', 'LTC', 'BCH', 'UNI', 'ALGO', 'NEAR', 'ATOM', 'FIL', 'ICP', 'VET', 'GRT', 'LDO', 'HBAR'];
-const indices = ['NAS100', 'US30', 'US500', 'GER40', 'HK50', 'UK100', 'FRA40', 'JPN225', 'AUS200', 'ESP35'];
-
-currencies.slice(0, 8).forEach((base) => {
-  currencies.slice(0, 8).forEach((quote) => {
-    const pair = `${base}/${quote}`;
-    if (base !== quote && !PAIR_CONFIGS[pair]) {
-      PAIR_CONFIGS[pair] = { name: `${base}${quote} Cross`, precision: 5, requiredTier: 'PRO' };
-    }
-  });
-});
-
-currencies.forEach((base) => {
-  currencies.slice(8).forEach((quote) => {
-    const pair = `${base}/${quote}`;
-    if (base !== quote && !PAIR_CONFIGS[pair]) {
-      PAIR_CONFIGS[pair] = { name: `${base}${quote} Exotic`, precision: 4, requiredTier: 'VIP' };
-    }
-  });
-});
-
-cryptos.forEach((c) => {
-  const pair = `${c}/USD`;
-  if (!PAIR_CONFIGS[pair]) {
-    PAIR_CONFIGS[pair] = { name: `${c} Crypto`, precision: 4, requiredTier: 'VIP' };
-  }
-});
-
-indices.forEach((idx) => {
-  if (!PAIR_CONFIGS[idx]) {
-    PAIR_CONFIGS[idx] = { name: idx, precision: 2, requiredTier: 'VIP' };
-  }
-});
 
 export const STRATEGIES = [
   { id: 'BASIC_RSI', name: 'Neural RSI Momentum', description: 'Uses relative strength with neural filtering to find overextended trends.', winRate: 65, tier: 'BASIC', features: ['RSI Tracking', 'Trend Alignment'] },
@@ -193,12 +166,15 @@ export const STRATEGIES = [
 ];
 
 export const BROKER_ASSET_MAP: Record<string, string[]> = {
-  'Pocket Option': Object.keys(PAIR_CONFIGS).filter(p => PAIR_CONFIGS[p].requiredTier === 'BASIC'),
+  'Pocket Option': Object.keys(PAIR_CONFIGS),
+  'Deriv (Institutional)': Object.keys(PAIR_CONFIGS),
+  'ExpertOption': Object.keys(PAIR_CONFIGS),
+  'Quotex Global': Object.keys(PAIR_CONFIGS),
   'MT5 Institutional': Object.keys(PAIR_CONFIGS),
   'Exness Institutional': Object.keys(PAIR_CONFIGS),
-  'Binance Cloud': Object.keys(PAIR_CONFIGS).filter(p => p.includes('/') && cryptos.concat(['BTC', 'ETH']).some(c => p.startsWith(c))),
+  'Binance Cloud': Object.keys(PAIR_CONFIGS),
 };
 
-export const BINARY_BROKERS = ['Pocket Option', 'Quotex', 'IQ Option', 'Deriv', 'ExpertOption', 'Binomo'];
-export const INSTITUTIONAL_BROKERS = ['MT5 Institutional', 'Exness Institutional', 'IC Markets Global', 'Pepperstone Pro', 'XM Premium', 'Saxo Bank'];
-export const CRYPTO_BROKERS = ['Binance Cloud', 'Coinbase Prime', 'Kraken Institutional', 'Bybit Institutional', 'OKX Private'];
+export const BINARY_BROKERS = ['Pocket Option', 'Deriv (Institutional)', 'ExpertOption', 'Quotex Global', 'Spectre.ai', 'Olymp Trade', 'IQ Option', 'Binomo'];
+export const INSTITUTIONAL_BROKERS = ['MT5 Institutional', 'Exness Institutional', 'IC Markets Global', 'Pepperstone Institutional'];
+export const CRYPTO_BROKERS = ['Binance Cloud', 'Coinbase Prime', 'Kraken Institutional', 'Bybit Institutional'];

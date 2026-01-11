@@ -1,315 +1,309 @@
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, ChevronRight, Settings, AlertTriangle, Key, User, Mail, Globe, Loader2, UserPlus, LogIn, X, Info } from 'lucide-react';
+import { ShieldCheck, Lock, Mail, User, Loader2, LogIn, AlertTriangle, Key, X, Info, UserPlus, Globe, ArrowRight, Eye, EyeOff, Shield, RotateCcw } from 'lucide-react';
+import { NEXUS_LOGO } from '../assets';
+import { registerUser, loginUser, resetPasswordRequest } from '../services/authService';
 
 interface AuthPageProps {
-  onLogin: (isAdmin?: boolean) => void;
+  onLogin: (isAdmin?: boolean, customProfile?: any) => void;
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [isSignup, setIsSignup] = useState(false);
-  
-  // Google Auth Flow State
-  const [showGooglePopup, setShowGooglePopup] = useState(false);
-  const [googleStep, setGoogleStep] = useState<'picker' | 'input' | 'processing'>('picker');
-  const [googleEmail, setGoogleEmail] = useState('');
-
-  // Form State
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'SIGNUP' | 'ROOT' | 'FORGOT'>('LOGIN');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passcode, setPasscode] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
-  // Institutional Constants - Updated per user request
   const MASTER_PASSCODE = '09162502987';
-  const ADMIN_IDENTITY = 'Alex';
+  const ADMIN_NAME = 'Alex';
 
-  const startGoogleAuth = () => {
-    setShowGooglePopup(true);
-    setGoogleStep('picker');
-  };
+  useEffect(() => {
+    if (failedAttempts >= 3) {
+      setError("RATE LIMIT: Node locked for 30s due to failed handshakes.");
+      const timer = setTimeout(() => setFailedAttempts(0), 30000);
+      return () => clearTimeout(timer);
+    }
+  }, [failedAttempts]);
 
-  const handleGoogleAccountSelect = (selectedEmail: string) => {
-    setGoogleEmail(selectedEmail);
-    setGoogleStep('processing');
-    
-    // Finalize Google Login Simulation
-    setTimeout(() => {
-      const isAlex = selectedEmail.toLowerCase().includes('alex');
-      setShowGooglePopup(false);
-      onLogin(isAlex);
-    }, 2000);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    if (isAdminMode) {
-      setTimeout(() => {
-        if (passcode === MASTER_PASSCODE) {
-          setLoading(false);
-          onLogin(true);
-        } else {
-          setLoading(false);
-          setError('Invalid Administrative Passcode.');
-          setPasscode('');
-        }
-      }, 1200);
+  const handleGoogleAuth = (mode: 'SIGNIN' | 'SIGNUP') => {
+    if (!email.includes('@gmail.com')) {
+      setError("Institutional Google Auth requires a valid @gmail.com address.");
       return;
     }
-
-    // Traditional Auth Simulation
+    
+    setLoading(true);
+    setError(null);
     setTimeout(() => {
-      const isAlex = fullName.toLowerCase() === ADMIN_IDENTITY.toLowerCase() || email.toLowerCase().includes('alex');
+      const mockProfile = {
+        displayName: mode === 'SIGNUP' ? (fullName || "New Node") : "Verified Node",
+        email: email,
+        photoURL: `https://i.pravatar.cc/150?u=${email}`,
+        uid: "google-" + Math.random().toString(36).substr(2, 9)
+      };
       setLoading(false);
-      onLogin(isAlex);
+      onLogin(false, mockProfile);
     }, 1500);
   };
 
+  const handleManualAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (failedAttempts >= 3) return;
+    
+    setError(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
+    try {
+      if (authMode === 'ROOT') {
+        if (passcode === MASTER_PASSCODE) {
+          setTimeout(() => {
+            setLoading(false);
+            onLogin(true, { displayName: ADMIN_NAME, email: "alex.root@nexus.ai" });
+          }, 800);
+        } else {
+          throw new Error('UNAUTHORIZED: Identity mismatch. Access Denied.');
+        }
+        return;
+      }
+
+      if (authMode === 'FORGOT') {
+        const res = await resetPasswordRequest(email);
+        setSuccessMsg(res.message);
+        setLoading(false);
+        return;
+      }
+
+      if (authMode === 'SIGNUP') {
+        if (password.length < 8) throw new Error("Security Policy: Password must be 8+ characters.");
+        const res = await registerUser(fullName, email, password);
+        setSuccessMsg(res.message);
+        setAuthMode('LOGIN');
+      } else {
+        const res = await loginUser(email, password);
+        onLogin(false, res.user);
+      }
+    } catch (err: any) {
+      setError(err.message || "Protocol Error.");
+      setFailedAttempts(prev => prev + 1);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden text-gray-100 font-sans">
-      
-      {/* REAL GOOGLE AUTH POPUP SIMULATION */}
-      {showGooglePopup && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white text-gray-900 w-full max-w-[400px] rounded-lg shadow-2xl overflow-hidden animate-scale-up">
-            <div className="p-8 pb-4">
-              <div className="flex justify-center mb-4">
-                <svg className="w-8 h-8" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-              </div>
-              <h2 className="text-xl font-medium text-center text-gray-800">Sign in with Google</h2>
-              <p className="text-sm text-gray-500 text-center mt-1">to continue to NexusTrade AI</p>
-
-              <div className="mt-8 space-y-0.5">
-                {googleStep === 'picker' && (
-                  <>
-                    <button 
-                      onClick={() => handleGoogleAccountSelect('alex.trader@gmail.com')}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors border-t border-gray-100 first:border-t-0"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold">A</div>
-                      <div className="text-left">
-                        <p className="text-sm font-medium text-gray-700">Alex</p>
-                        <p className="text-xs text-gray-500">alex.trader@gmail.com</p>
-                      </div>
-                    </button>
-                    <button 
-                      onClick={() => setGoogleStep('input')}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors border-t border-gray-100"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                        <User className="w-4 h-4 text-gray-500" />
-                      </div>
-                      <p className="text-sm font-medium text-gray-700">Use another account</p>
-                    </button>
-                  </>
-                )}
-
-                {googleStep === 'input' && (
-                  <div className="py-4 space-y-4">
-                    <input 
-                      type="email" 
-                      placeholder="Email or phone" 
-                      className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                      autoFocus
-                      onKeyDown={(e) => e.key === 'Enter' && handleGoogleAccountSelect(e.currentTarget.value)}
-                    />
-                    <div className="flex justify-between items-center">
-                      <button onClick={() => setGoogleStep('picker')} className="text-blue-600 text-sm font-medium">Back</button>
-                      <button 
-                        onClick={() => {
-                          const input = document.querySelector('input[type="email"]') as HTMLInputElement;
-                          if (input.value) handleGoogleAccountSelect(input.value);
-                        }}
-                        className="bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {googleStep === 'processing' && (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-4">
-                    <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                    <p className="text-sm font-medium text-gray-600">Verifying Identity...</p>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center px-8">
-              <span className="text-[10px] text-gray-500">English (United States)</span>
-              <div className="flex gap-4 text-[10px] text-gray-500 font-medium">
-                <span>Help</span>
-                <span>Privacy</span>
-                <span>Terms</span>
-              </div>
-            </div>
-          </div>
-          <button onClick={() => setShowGooglePopup(false)} className="absolute top-8 right-8 text-white/50 hover:text-white"><X /></button>
-        </div>
-      )}
-
-      {/* Main Page Content */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 pointer-events-none">
-        <div className={`absolute -top-[20%] -left-[10%] w-[70%] h-[70%] blur-[120px] rounded-full transition-all duration-1000 ${isAdminMode ? 'bg-amber-500/10' : 'bg-primary/15'}`}></div>
-        <div className={`absolute bottom-0 -right-[10%] w-[60%] h-[60%] blur-[120px] rounded-full transition-all duration-1000 ${isAdminMode ? 'bg-amber-600/5' : 'bg-accent/10'}`}></div>
+    <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+      {/* Background decoration remains same... */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/5 blur-[120px] rounded-full"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/5 blur-[120px] rounded-full"></div>
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px]"></div>
       </div>
 
-      <div className={`w-full max-w-md bg-surface/40 backdrop-blur-3xl border rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative z-10 transition-all duration-700 ${isAdminMode ? 'border-amber-500/30' : 'border-gray-700/50'}`}>
+      <div className={`w-full max-w-md bg-[#0a101f]/90 backdrop-blur-3xl border rounded-[3rem] p-10 md:p-12 shadow-2xl relative z-10 transition-all duration-500 ${authMode === 'ROOT' ? 'border-amber-500/40 shadow-amber-950/20' : 'border-gray-800'}`}>
         
-        <div className="absolute top-8 right-8">
-          <button 
-            onClick={() => {
-              setIsAdminMode(!isAdminMode);
-              setError(null);
-            }}
-            className={`p-3 rounded-2xl transition-all duration-500 ${isAdminMode ? 'text-amber-400 bg-amber-400/10 scale-110 shadow-lg shadow-amber-900/40' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
-          >
-            <Settings className={`w-5 h-5 ${isAdminMode ? 'animate-spin-slow' : ''}`} />
-          </button>
-        </div>
-
+        {/* Branding */}
         <div className="flex flex-col items-center mb-8">
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 shadow-2xl transition-all duration-700 transform ${isAdminMode ? 'bg-amber-500 rotate-12' : 'bg-primary'}`}>
-            {isAdminMode ? <ShieldCheck className="w-8 h-8 text-black" /> : <Lock className="w-8 h-8 text-white" />}
+          <div className={`w-20 h-20 rounded-[1.8rem] flex items-center justify-center mb-4 shadow-2xl border transition-all duration-500 transform hover:scale-105 ${authMode === 'ROOT' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'}`}>
+             <img src={NEXUS_LOGO} alt="Nexus Bot" className={`w-12 h-12 ${authMode === 'ROOT' ? 'grayscale brightness-200' : ''}`} />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tighter uppercase mb-1">Nexus AI</h1>
-          <p className="text-[10px] text-gray-500 font-black tracking-[0.3em] uppercase opacity-60">
-            {isAdminMode ? "Authorization Protocol" : isSignup ? "Trader Registration" : "Terminal Entry"}
+          <h1 className="text-3xl font-black text-white tracking-tighter uppercase mb-1 italic">NexusTrade</h1>
+          <p className="text-[9px] text-gray-500 font-black tracking-[0.4em] uppercase opacity-70">
+            {authMode === 'ROOT' ? "Root Terminal" : authMode === 'FORGOT' ? "Recovery Protocol" : "Institutional Cluster v3.6"}
           </p>
         </div>
 
-        {!isAdminMode && (
-          <div className="mb-8">
+        {/* Mode Toggles (Hide in Root or Forgot) */}
+        {(authMode === 'LOGIN' || authMode === 'SIGNUP') && (
+          <div className="flex bg-black/40 p-1.5 rounded-2xl border border-gray-800 mb-8">
             <button 
-              onClick={startGoogleAuth}
-              className="w-full py-4 bg-white text-gray-700 font-bold rounded-2xl shadow-xl hover:bg-gray-50 border border-gray-200 transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 active:scale-95 mb-6 group"
+              onClick={() => setAuthMode('LOGIN')}
+              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'LOGIN' ? 'bg-gray-800 text-white shadow-lg' : 'text-gray-500 hover:text-gray-400'}`}
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-              Continue with Google
+              Sign In
             </button>
-
-            <div className="flex items-center gap-4 mb-6">
-              <div className="h-px bg-gray-800 flex-1"></div>
-              <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">OR</span>
-              <div className="h-px bg-gray-800 flex-1"></div>
-            </div>
+            <button 
+              onClick={() => setAuthMode('SIGNUP')}
+              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'SIGNUP' ? 'bg-gray-800 text-white shadow-lg' : 'text-gray-500 hover:text-gray-400'}`}
+            >
+              Sign Up
+            </button>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isAdminMode ? (
-            <>
-              {isSignup && (
-                <div className="relative group">
-                  <User className="absolute left-4 top-4 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                  <input 
-                    type="text" 
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Full Name (e.g. Alex)" 
-                    className="w-full bg-gray-900/60 border border-gray-700 rounded-2xl py-3.5 pl-12 pr-4 text-white text-xs focus:ring-1 focus:ring-primary outline-none transition-all"
-                    required
-                  />
-                </div>
-              )}
-              <div className="relative group">
-                <Mail className="absolute left-4 top-4 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Institutional Email" 
-                  className="w-full bg-gray-900/60 border border-gray-700 rounded-2xl py-3.5 pl-12 pr-4 text-white text-xs focus:ring-1 focus:ring-primary outline-none transition-all"
-                  required
-                />
-              </div>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-4 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Terminal Password" 
-                  className="w-full bg-gray-900/60 border border-gray-700 rounded-2xl py-3.5 pl-12 pr-4 text-white text-xs focus:ring-1 focus:ring-primary outline-none transition-all"
-                  required
-                />
-              </div>
-            </>
-          ) : (
-            <div className="relative group pt-4">
-              <Key className="absolute left-4 top-8 w-5 h-5 text-amber-500" />
+        {/* Manual Input Form */}
+        <form onSubmit={handleManualAuth} className="space-y-4">
+          {authMode === 'SIGNUP' && (
+            <div className="relative group animate-fade-in">
+              <User className="absolute left-4 top-4 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
+              <input 
+                type="text" 
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Full Name" 
+                className="w-full bg-black/40 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white text-xs focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-gray-700"
+                required
+              />
+            </div>
+          )}
+
+          {authMode !== 'ROOT' && (
+            <div className="relative group">
+              <Mail className="absolute left-4 top-4 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
+              <input 
+                type="email" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Institutional Email" 
+                className="w-full bg-black/40 border border-gray-800 rounded-2xl py-4 pl-12 pr-4 text-white text-xs focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-gray-700 font-mono"
+                required
+              />
+            </div>
+          )}
+
+          {(authMode === 'LOGIN' || authMode === 'SIGNUP') && (
+            <div className="relative group animate-fade-in">
+              <Shield className="absolute left-4 top-4 w-4 h-4 text-gray-500 group-focus-within:text-primary transition-colors" />
+              <input 
+                type={showPassword ? "text" : "password"} 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Account Password" 
+                className="w-full bg-black/40 border border-gray-800 rounded-2xl py-4 pl-12 pr-12 text-white text-xs focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-gray-700"
+                required
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-4 text-gray-600 hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          )}
+
+          {authMode === 'ROOT' && (
+            <div className="relative group animate-fade-in">
+              <Key className="absolute left-4 top-5 w-5 h-5 text-amber-500" />
               <input 
                 type="password" 
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Passcode" 
-                className="w-full bg-gray-900/60 border border-amber-500/40 rounded-2xl py-4 pl-12 pr-4 text-white text-lg font-mono tracking-[0.5em] focus:ring-1 focus:ring-amber-500 outline-none"
+                placeholder="Alex Root Passcode" 
+                className="w-full bg-black/40 border border-amber-500/40 rounded-2xl py-6 pl-12 pr-4 text-white text-xl font-mono tracking-[0.5em] focus:ring-1 focus:ring-amber-500 outline-none placeholder:text-gray-800 text-center"
+                autoFocus
                 required
               />
-              <p className="mt-4 text-[10px] text-amber-500/50 uppercase font-black text-center tracking-widest flex items-center justify-center gap-2">
-                <Info className="w-3 h-3" /> Institutional ROOT Key Required
-              </p>
             </div>
           )}
 
           {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-[10px] font-bold flex items-center gap-2 animate-shake">
-              <AlertTriangle className="w-3 h-3" /> {error}
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-[10px] font-black uppercase flex items-center gap-3 animate-pulse">
+              <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
             </div>
           )}
 
-          <button 
-            type="submit" 
-            disabled={loading}
-            className={`w-full font-black py-4 rounded-2xl transition-all duration-300 flex items-center justify-center gap-2 shadow-xl uppercase tracking-widest text-[10px] ${
-              isAdminMode 
-                ? 'bg-amber-500 hover:bg-amber-400 text-black' 
-                : 'bg-primary hover:bg-blue-500 text-white'
-            }`}
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                {isAdminMode ? 'Unlock Maintenance' : isSignup ? 'Create Account' : 'Initialize Terminal'} 
-                {isSignup ? <UserPlus className="w-3 h-3" /> : <LogIn className="w-3 h-3" />}
-              </>
-            )}
-          </button>
+          {successMsg && (
+            <div className="p-4 bg-success/10 border border-success/20 rounded-xl text-success text-[10px] font-black uppercase flex items-center gap-3">
+              <ShieldCheck className="w-4 h-4 shrink-0" /> {successMsg}
+            </div>
+          )}
+
+          {authMode === 'LOGIN' && (
+            <div className="flex justify-end">
+              <button 
+                type="button"
+                onClick={() => setAuthMode('FORGOT')}
+                className="text-[9px] font-black text-gray-600 hover:text-primary uppercase tracking-widest transition-colors"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          )}
+
+          {authMode !== 'ROOT' ? (
+              <div className="space-y-3 pt-2">
+                  <button 
+                    type="submit" 
+                    disabled={loading}
+                    className="w-full font-black py-4 bg-primary hover:bg-blue-500 text-white rounded-2xl transition-all shadow-xl uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-primary/20"
+                  >
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                      <>
+                        {authMode === 'SIGNUP' ? 'Initialize Node' : authMode === 'FORGOT' ? 'Request Recovery' : 'Connect Terminal'}
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  {authMode !== 'FORGOT' && (
+                    <>
+                      <div className="flex items-center gap-4 py-2">
+                        <div className="flex-1 h-px bg-gray-800"></div>
+                        <span className="text-[9px] text-gray-700 font-black uppercase tracking-widest">or SSO Secure</span>
+                        <div className="flex-1 h-px bg-gray-800"></div>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => handleGoogleAuth(authMode === 'SIGNUP' ? 'SIGNUP' : 'SIGNIN')}
+                        disabled={loading || !email.includes('@gmail.com')}
+                        className="w-full py-4 bg-white text-black font-black uppercase text-[10px] tracking-widest rounded-2xl flex items-center justify-center gap-3 hover:bg-gray-100 transition-all disabled:opacity-30 shadow-xl"
+                      >
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" className="w-4 h-4" />
+                        Continue with Google
+                      </button>
+                    </>
+                  )}
+
+                  {authMode === 'FORGOT' && (
+                    <button 
+                      type="button"
+                      onClick={() => setAuthMode('LOGIN')}
+                      className="w-full flex items-center justify-center gap-2 text-[9px] font-black text-gray-500 hover:text-white uppercase tracking-widest transition-colors mt-4"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Back to Connection
+                    </button>
+                  )}
+              </div>
+          ) : (
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="w-full font-black py-6 bg-amber-500 hover:bg-amber-400 text-black rounded-[2rem] transition-all shadow-xl uppercase tracking-widest text-[11px] flex items-center justify-center gap-3 shadow-amber-950/20"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                  <>
+                    Initialize Alex Root Hub
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+          )}
         </form>
 
-        {!isAdminMode && (
-          <div className="mt-8 text-center">
-            <button 
-              onClick={() => setIsSignup(!isSignup)}
-              className="text-[10px] text-gray-500 hover:text-white uppercase tracking-widest font-black transition-colors"
-            >
-              {isSignup ? "Already have a terminal ID? Sign In" : "New Institutional Trader? Register"}
-            </button>
-          </div>
-        )}
-
-        <div className="mt-12 text-center opacity-40">
-           <p className="text-[8px] text-gray-600 font-black tracking-[0.4em] uppercase">Quantum Identity Engine v2.5.1</p>
+        {/* Admin Secret Portal Link */}
+        <div className="mt-10 text-center">
+          <button 
+            onClick={() => {
+              setAuthMode(authMode === 'ROOT' ? 'LOGIN' : 'ROOT');
+              setError(null);
+              setSuccessMsg(null);
+            }} 
+            className={`text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'ROOT' ? 'text-gray-500 hover:text-white' : 'text-gray-800 hover:text-amber-500/60'}`}
+          >
+            {authMode === 'ROOT' ? "Back to Trader Gate" : "Institutional Root Access"}
+          </button>
         </div>
+      </div>
+      
+      {/* Footer Branding */}
+      <div className="mt-8 text-center opacity-30">
+        <p className="text-[9px] font-black text-gray-500 uppercase tracking-[0.6em]">Secure Protocol v3.6 • SSL Encrypted Handshake</p>
       </div>
     </div>
   );
