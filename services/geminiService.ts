@@ -5,31 +5,29 @@ import { MarketDataPoint, AnalysisResult, UserTier, BotConfig, STRATEGIES } from
 export const analyzeMarket = async (
   dataHistory: MarketDataPoint[],
   pair: string,
-  tier: UserTier = 'BASIC',
-  newsItems: string[] = []
+  tier: UserTier = 'BASIC'
 ): Promise<AnalysisResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const recentPrices = dataHistory.slice(-20).map(d => ({ p: d.price.toFixed(5), v: d.volume }));
+  const recentPrices = dataHistory.slice(-40).map(d => ({ p: d.price.toFixed(5), v: d.volume }));
   
-  const systemInstructions = `NEXUS NEURAL HFT CORE v24.
-  MISSION: High-precision institutional technical analysis for ${pair}. 
+  const systemInstructions = `NEXUS NEURAL TERMINAL v7.2 (Institutional HFT Protocol).
+  MISSION: High-precision technical analysis for ${pair} using advanced Smart Money Concepts (SMC) and Liquidity Mapping.
   
-  CORE TASKS:
-  1. MARKET SITUATION: Define the current market phase (e.g., "Impulsive Bullish Breakout after Accumulation").
-  2. CANDLESTICK PATTERN: Identify specific price action patterns (e.g., "Bullish Engulfing", "Morning Star").
-  3. RECOMMENDATION: Explicit "BUY", "SELL", or "HOLD".
-  4. EXECUTION PARAMETERS: Provide Stop Loss (SL), Take Profit (TP), and suggested Lot Size (e.g., "0.50").
-  5. TIMING: Provide precise entry directive.
-  
-  OUTPUT: Strict JSON only. All numeric values must be relative to current price.`;
+  STRATEGY EFFICIENCY PROTOCOL:
+  1. TARGET RR RATIO: Minimum 1:3 Profit-to-Risk ratio. Stop loss must be placed at the most recent local structure break.
+  2. INSTITUTIONAL LIQUIDITY: Prioritize signals ONLY after a confirmed "Liquidity Sweep" (taking out old highs/lows) followed by a Market Structure Shift (MSS).
+  3. ORDER BLOCKS & FVG: Entry must coincide with a Fair Value Gap or a high-volume Order Block.
+  4. CONFIDENCE: Integer 0-100. Strictest criteria: 85+ required for 3-factor confluence.
+  5. OUTPUT: Strict JSON only.`;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview", 
-      contents: `DATA_FEED: ${JSON.stringify(recentPrices)}\nTARGET_ASSET: ${pair}\nTIER_ACCESS: ${tier}`,
+      contents: `MARKET_DATA: ${JSON.stringify(recentPrices)}\nINSTRUMENT: ${pair}\nACCESS_TIER: ${tier}`,
       config: {
         systemInstruction: systemInstructions,
         responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 4000 },
         responseSchema: {
           type: Type.OBJECT,
           properties: {
@@ -49,21 +47,18 @@ export const analyzeMarket = async (
             takeProfit: { type: Type.NUMBER },
             newsContext: { type: Type.STRING }
           },
-          required: ["recommendation", "confidence", "marketDefinition", "candlestickPattern", "stopLoss", "takeProfit", "suggestedLotSize"]
+          required: ["recommendation", "confidence", "marketDefinition", "stopLoss", "takeProfit", "suggestedLotSize"]
         }
       }
     });
 
     return JSON.parse(response.text || "{}");
   } catch (e) {
-    console.error("Neural Analysis Failure:", e);
+    console.error("Neural Node Analysis Failure:", e);
     throw e;
   }
 };
 
-/**
- * Added chatWithAssistant function to handle AI chat messages with market context.
- */
 export const chatWithAssistant = async (
   message: string,
   marketContext: string,
@@ -73,14 +68,13 @@ export const chatWithAssistant = async (
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      contents: `MARKET_DATA: ${marketContext}\nBOT_CONFIG: ${JSON.stringify(config)}\nUSER_QUERY: ${message}`,
+      contents: `MARKET_STATE: ${marketContext}\nUSER_CONFIG: ${JSON.stringify(config)}\nQUERY: ${message}`,
       config: {
-        systemInstruction: "You are the Nexus Neural Assistant, an expert AI specialized in high-frequency trading and institutional market analysis. Provide technical, professional, and data-driven responses. If requested, analyze trends or explain market concepts concisely."
+        systemInstruction: "You are the Nexus Institutional Terminal Assistant. Provide high-level technical insights, SMC explanations, and portfolio risk advice."
       }
     });
-    return response.text || "I am unable to provide a response at this time.";
+    return response.text || "Connection to neural cluster interrupted.";
   } catch (error) {
-    console.error("Assistant Chat Failure:", error);
-    return "The neural node encountered an error processing your request.";
+    return "The assistant node is currently offline.";
   }
 };

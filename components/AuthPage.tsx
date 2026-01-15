@@ -40,8 +40,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
     setLoading(true);
     setError(null);
     setTimeout(() => {
+      // Use 'name' to align with UserProfile schema
       const mockProfile = {
-        displayName: mode === 'SIGNUP' ? (fullName || "New Node") : "Verified Node",
+        name: mode === 'SIGNUP' ? (fullName || "New Node") : "Verified Node",
         email: email,
         photoURL: `https://i.pravatar.cc/150?u=${email}`,
         uid: "google-" + Math.random().toString(36).substr(2, 9)
@@ -64,7 +65,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         if (passcode === MASTER_PASSCODE) {
           setTimeout(() => {
             setLoading(false);
-            onLogin(true, { displayName: ADMIN_NAME, email: "alex.root@nexus.ai" });
+            // Ensure root profile uses 'name' for the isAdmin check in App.tsx
+            onLogin(true, { name: ADMIN_NAME, email: "alex.root@nexus.ai" });
           }, 800);
         } else {
           throw new Error('UNAUTHORIZED: Identity mismatch. Access Denied.');
@@ -98,7 +100,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
-      {/* Background decoration remains same... */}
+      {/* Background decoration */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/5 blur-[120px] rounded-full"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/5 blur-[120px] rounded-full"></div>
@@ -118,7 +120,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
           </p>
         </div>
 
-        {/* Mode Toggles (Hide in Root or Forgot) */}
+        {/* Mode Toggles */}
         {(authMode === 'LOGIN' || authMode === 'SIGNUP') && (
           <div className="flex bg-black/40 p-1.5 rounded-2xl border border-gray-800 mb-8">
             <button 

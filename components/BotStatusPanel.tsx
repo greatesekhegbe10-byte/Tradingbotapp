@@ -1,12 +1,12 @@
 
 import React from 'react';
-import { AnalysisResult, BotConfig, STRATEGIES, UserTier } from '../types';
-import { Brain, Play, Square, Crown, Zap, Shield, ShieldCheck, Cpu, Check, Copy, Info, Target, TrendingUp, Search, Clock, Activity } from 'lucide-react';
+import { AnalysisResult, BotConfig, STRATEGIES, UserTier, UserProfile } from '../types';
+import { Brain, Play, Square, Crown, Zap, Shield, Target, Info, Search, Clock, Activity, Cpu, Webhook, Landmark, Terminal, BarChart4, TrendingUp, TrendingDown, ArrowRightCircle } from 'lucide-react';
 
 interface BotStatusPanelProps {
   analysis: AnalysisResult | null;
   config: BotConfig;
-  userTier: UserTier;
+  user: UserProfile; 
   onToggleActive: () => void;
   onToggleAuto: () => void;
   isAnalyzing: boolean;
@@ -14,158 +14,167 @@ interface BotStatusPanelProps {
 }
 
 export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ 
-  analysis, config, userTier, onToggleActive, onToggleAuto, isAnalyzing, livePrice 
+  analysis, config, user, onToggleActive, onToggleAuto, isAnalyzing, livePrice 
 }) => {
-  const [copied, setCopied] = React.useState(false);
-
+  const userTier = user.tier;
   const tierMeta = {
     'BASIC': { color: 'text-gray-400', border: 'border-gray-800', bg: 'bg-gray-900', icon: Shield },
-    'PRO': { color: 'text-yellow-400', border: 'border-yellow-900/40', bg: 'bg-yellow-950/20', icon: Crown },
-    'VIP': { color: 'text-purple-400', border: 'border-purple-900/40', bg: 'bg-purple-950/20', icon: Zap }
+    'PRO': { color: 'text-amber-500', border: 'border-amber-900/40', bg: 'bg-amber-950/10', icon: Crown },
+    'VIP': { color: 'text-purple-400', border: 'border-purple-900/40', bg: 'bg-purple-950/10', icon: Zap }
   };
 
   const currentTier = tierMeta[userTier] || tierMeta['BASIC'];
   const TierIcon = currentTier.icon;
   const activeStrategy = STRATEGIES.find(s => s.id === config.strategyId) || STRATEGIES[0];
 
-  const handleCopy = () => {
-    if (!analysis) return;
-    const text = `${config.pair} | ${analysis.recommendation} | PRICE: ${livePrice.toFixed(5)} | SL: ${analysis.stopLoss.toFixed(5)} | TP: ${analysis.takeProfit.toFixed(5)} | LOT: ${analysis.suggestedLotSize}`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const brokerConfig = user.brokerConfig;
 
   return (
-    <div className={`bg-surface rounded-[2rem] md:rounded-[2.5rem] border flex flex-col h-full overflow-hidden shadow-2xl transition-all duration-700 ${
-      config.isAutoTrade ? 'border-success/40 shadow-success/10' : 'border-gray-800'
+    <div className={`bg-[#0a101f] rounded-[3rem] border flex flex-col h-full overflow-hidden shadow-2xl transition-all duration-700 ${
+      config.isActive ? 'border-primary shadow-primary/10' : 'border-gray-800'
     }`}>
-      <div className={`p-5 md:p-6 border-b flex justify-between items-center backdrop-blur-3xl ${currentTier.bg} border-gray-800`}>
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center border shadow-xl ${currentTier.border}`}>
-            <TierIcon className={`w-5 h-5 md:w-6 md:h-6 ${currentTier.color} ${userTier === 'VIP' ? 'animate-pulse' : ''}`} />
+      {/* HUD Header */}
+      <div className={`p-8 border-b flex justify-between items-center backdrop-blur-3xl ${currentTier.bg} border-gray-800`}>
+        <div className="flex items-center gap-4">
+          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-xl ${currentTier.border}`}>
+            <TierIcon className={`w-7 h-7 ${currentTier.color} ${userTier === 'VIP' ? 'animate-pulse' : ''}`} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xs md:text-sm font-black text-white uppercase tracking-tighter">Neural Hub</h2>
-              <span className={`px-2 py-0.5 rounded-full text-[7px] md:text-[8px] font-black border uppercase tracking-widest ${currentTier.color} ${currentTier.border}`}>
+              <h2 className="text-sm font-black text-white uppercase tracking-tighter italic">HFT Signal Node</h2>
+              <span className={`px-2 py-0.5 rounded-lg text-[7px] font-black border uppercase tracking-widest ${currentTier.color} ${currentTier.border}`}>
                 {userTier}
               </span>
             </div>
-            <p className="text-[8px] md:text-[9px] text-gray-500 font-black uppercase tracking-widest mt-1">
-              {isAnalyzing ? 'Scanning...' : config.isActive ? 'Engine Online' : 'Terminal Idle'}
+            <p className="text-[9px] text-gray-600 font-black uppercase tracking-widest mt-1 flex items-center gap-2">
+              {isAnalyzing ? <Search className="w-2.5 h-2.5 animate-spin text-primary" /> : config.isActive ? <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> : <Clock className="w-2.5 h-2.5" />}
+              {isAnalyzing ? 'Scanning Order Blocks...' : config.isActive ? 'Bridge Live (5s Pulse)' : 'Node Idle'}
             </p>
           </div>
         </div>
         <div className="flex gap-2">
             <button 
                 onClick={onToggleAuto}
-                className={`px-3 md:px-4 py-2 rounded-lg md:rounded-xl text-[8px] md:text-[9px] font-black uppercase tracking-widest transition-all ${config.isAutoTrade ? 'bg-success text-white shadow-lg shadow-success/20' : 'bg-gray-800 text-gray-400'}`}
+                className={`px-4 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${config.isAutoTrade ? 'bg-primary text-white shadow-xl shadow-primary/30' : 'bg-gray-800 text-gray-500 hover:text-white'}`}
             >
-                {config.isAutoTrade ? 'Auto' : 'Semi'}
+                AUTO
             </button>
-            <button onClick={onToggleActive} className={`px-4 md:px-5 py-2.5 md:py-3 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black tracking-widest transition-all ${config.isActive ? 'bg-danger text-white' : 'bg-primary text-white'}`}>
-                {config.isActive ? <Square className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current" /> : <Play className="w-3 h-3 md:w-3.5 md:h-3.5 fill-current" />}
+            <button onClick={onToggleActive} className={`px-5 py-4 rounded-2xl text-[11px] font-black tracking-widest transition-all ${config.isActive ? 'bg-danger text-white shadow-danger/30' : 'bg-success text-white shadow-success/30'}`}>
+                {config.isActive ? <Square className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
             </button>
         </div>
       </div>
 
-      <div className="p-6 md:p-8 flex-1 flex flex-col gap-6 overflow-y-auto scrollbar-hide">
-        {/* EDUCATIONAL BREAKDOWN */}
-        <div className="space-y-4">
-           <div className="bg-gray-900/60 p-4 md:p-5 rounded-[1.2rem] md:rounded-[1.5rem] border border-gray-800 relative group overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-20 transition-opacity">
-                  <Zap className="w-8 h-8 text-primary" />
-              </div>
-              <div className="flex justify-between items-center mb-2 relative z-10">
-                 <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Market Context</span>
-                 <Info className="w-3 h-3 text-primary" />
-              </div>
-              <h3 className="text-xs md:text-sm font-black text-white uppercase tracking-tight mb-1">{analysis?.marketDefinition || "Initializing Node..."}</h3>
-              <p className="text-[9px] md:text-[10px] text-gray-400 leading-relaxed font-medium italic opacity-60">
-                Logic: {analysis?.activeStrategyName || activeStrategy.name}
-              </p>
-           </div>
+      {/* NEXT-GEN TRADING PANEL: LOT / SL / TP */}
+      <div className="px-8 pt-8 grid grid-cols-3 gap-3">
+          <div className="bg-gray-900/40 p-5 rounded-3xl border border-gray-800 flex flex-col items-center text-center">
+             <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Lot Size</span>
+             <span className="text-xs font-mono font-black text-white italic">{analysis?.suggestedLotSize || 'AUTO'}</span>
+          </div>
+          <div className="bg-gray-900/40 p-5 rounded-3xl border border-gray-800 flex flex-col items-center text-center">
+             <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Top Loss</span>
+             <span className="text-xs font-mono font-black text-danger italic">-{analysis?.stopLoss.toFixed(2) || '0.00'}</span>
+          </div>
+          <div className="bg-gray-900/40 p-5 rounded-3xl border border-gray-800 flex flex-col items-center text-center">
+             <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Take Profit</span>
+             <span className="text-xs font-mono font-black text-success italic">+{analysis?.takeProfit.toFixed(2) || '0.00'}</span>
+          </div>
+      </div>
 
-           <div className="grid grid-cols-2 gap-3">
-              <div className="bg-primary/5 p-3 md:p-4 rounded-xl md:rounded-2xl border border-primary/20">
-                 <p className="text-[7px] md:text-[8px] text-gray-500 font-black uppercase mb-1">Candlestick</p>
-                 <p className="text-[10px] md:text-xs font-black text-white uppercase truncate">{analysis?.candlestickPattern || "Scanning..."}</p>
-              </div>
-              <div className="bg-accent/5 p-3 md:p-4 rounded-xl md:rounded-2xl border border-accent/20">
-                 <p className="text-[7px] md:text-[8px] text-gray-500 font-black uppercase mb-1">Timing</p>
-                 <p className={`text-[9px] font-black uppercase truncate ${analysis?.entryTiming?.includes('WAIT') ? 'text-amber-500' : 'text-accent'}`}>
-                    {analysis?.entryTiming || "Awaiting Node"}
-                 </p>
-              </div>
-           </div>
+      {/* Dual Bridge Health */}
+      <div className="px-8 pt-6 grid grid-cols-2 gap-4">
+          <div className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${brokerConfig?.metaApi?.isActive ? 'bg-primary/5 border-primary/20' : 'bg-gray-900 border-gray-800 opacity-50'}`}>
+             <Webhook className={`w-4 h-4 ${brokerConfig?.metaApi?.isActive ? 'text-primary' : 'text-gray-600'}`} />
+             <div>
+                <p className="text-[7px] text-gray-500 font-black uppercase tracking-widest">Binary (M-API)</p>
+                <p className={`text-[9px] font-black uppercase ${brokerConfig?.metaApi?.isActive ? 'text-white' : 'text-gray-600'}`}>
+                    {brokerConfig?.metaApi?.isActive ? 'Linked' : 'Offline'}
+                </p>
+             </div>
+          </div>
+          <div className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${brokerConfig?.mtPlatform?.isActive ? 'bg-accent/5 border-accent/20' : 'bg-gray-900 border-gray-800 opacity-50'}`}>
+             <Landmark className={`w-4 h-4 ${brokerConfig?.mtPlatform?.isActive ? 'text-accent' : 'text-gray-600'}`} />
+             <div>
+                <p className="text-[7px] text-gray-500 font-black uppercase tracking-widest">MT-EA Node</p>
+                <p className={`text-[9px] font-black uppercase ${brokerConfig?.mtPlatform?.isActive ? 'text-white' : 'text-gray-600'}`}>
+                    {brokerConfig?.mtPlatform?.isActive ? 'Running' : 'Offline'}
+                </p>
+             </div>
+          </div>
+      </div>
+
+      {/* Neural Logic Feed & Active Stream */}
+      <div className="p-8 flex-1 flex flex-col gap-6 overflow-y-auto scrollbar-hide">
+        
+        {/* Active Market Direction HUD */}
+        <div className={`p-10 rounded-[3rem] border-2 transition-all text-center relative overflow-hidden ${
+            analysis?.recommendation === 'BUY' ? 'border-success/30 bg-success/5' : 
+            analysis?.recommendation === 'SELL' ? 'border-danger/30 bg-danger/5' : 'border-gray-800 bg-gray-900/40'
+        }`}>
+            <p className="text-[10px] font-black uppercase tracking-[0.4em] mb-4 text-gray-600 italic">Neural Recommendation</p>
+            <h1 className={`text-6xl font-black tracking-tighter uppercase mb-4 ${
+                analysis?.recommendation === 'BUY' ? 'text-success drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 
+                analysis?.recommendation === 'SELL' ? 'text-danger drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'text-white'
+            }`}>
+                {analysis?.recommendation === 'BUY' ? 'CALL' : 
+                analysis?.recommendation === 'SELL' ? 'PUT' : 'WAIT'}
+            </h1>
+            <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-2 px-4 py-2 bg-black/60 rounded-2xl border border-gray-800 shadow-xl">
+                    <Brain className="w-4 h-4 text-primary" />
+                    <span className="text-[11px] font-black text-white tracking-widest">{analysis?.confidence || 0}% CONFIDENCE</span>
+                </div>
+            </div>
         </div>
 
-        {analysis ? (
-          <>
-            <div className={`p-6 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] border-2 transition-all text-center relative overflow-hidden ${
-              analysis.recommendation === 'BUY' ? 'border-success/30 bg-success/5' : 
-              analysis.recommendation === 'SELL' ? 'border-danger/30 bg-danger/5' : 'border-gray-800 bg-gray-900/40'
-            }`}>
-              <p className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.4em] mb-2 opacity-60">Execution Order</p>
-              <h1 className={`text-3xl md:text-5xl font-black tracking-tighter uppercase mb-2 ${
-                analysis.recommendation === 'BUY' ? 'text-success' : 
-                analysis.recommendation === 'SELL' ? 'text-danger' : 'text-white'
-              }`}>
-                {analysis.recommendation === 'BUY' ? 'CALL' : 
-                 analysis.recommendation === 'SELL' ? 'PUT' : 'HOLD'}
-              </h1>
-              
-              <div className="flex flex-col items-center mb-6">
-                 <div className="flex items-center gap-2 mb-1">
-                    <Target className="w-3 h-3 text-gray-500" />
-                    <span className="text-[11px] font-mono font-black text-white tracking-widest">${livePrice.toFixed(5)}</span>
-                 </div>
-              </div>
+        {/* OPEN POSITIONS MINI-LEDGER */}
+        <div className="space-y-4">
+            <div className="flex justify-between items-center px-2">
+                <h3 className="text-[9px] text-gray-500 font-black uppercase tracking-widest">Active Stream</h3>
+                <span className="text-[8px] px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded uppercase font-black">Cluster Alpha</span>
+            </div>
+            
+            <div className="bg-gray-900/40 rounded-[2rem] border border-gray-800 p-6 space-y-4 min-h-[120px] flex flex-col justify-center">
+                {isAnalyzing ? (
+                   <div className="flex flex-col items-center gap-3 opacity-30">
+                       <BarChart4 className="w-6 h-6 animate-pulse" />
+                       <span className="text-[8px] font-black uppercase tracking-widest">Refreshing Clusters...</span>
+                   </div>
+                ) : (
+                    <div className="space-y-3 font-mono text-[9px] tracking-tight">
+                        <div className="flex justify-between items-center text-success border-b border-gray-800/50 pb-2">
+                            <span className="flex items-center gap-2"><TrendingUp className="w-3 h-3" /> [META_API] Signal Relayed</span>
+                            <span className="font-black">OK</span>
+                        </div>
+                        <div className="flex justify-between items-center text-accent border-b border-gray-800/50 pb-2">
+                            <span className="flex items-center gap-2"><Cpu className="w-3 h-3" /> [EA_NODE] Execution Sync</span>
+                            <span className="font-black">1.2ms</span>
+                        </div>
+                        <div className="flex justify-between items-center text-white/40">
+                            <span className="flex items-center gap-2 italic"><ArrowRightCircle className="w-3 h-3" /> Drawdown Protection</span>
+                            <span className="font-black text-success">SAFE</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
 
-              <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-[9px] font-black uppercase transition-all">
-                {copied ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />} Copy Signal
-              </button>
-              
-              <div className="absolute top-0 right-0 p-3">
-                 <div className="flex items-center gap-1 px-2 py-1 bg-gray-900 border border-gray-800 rounded-lg shadow-xl">
-                    <Brain className="w-3 h-3 text-primary" />
-                    <span className="text-[9px] font-black text-white">{analysis.confidence}%</span>
-                 </div>
-              </div>
+        {/* Console Logs */}
+        <div className="bg-black/40 p-5 rounded-[2rem] border border-gray-800">
+            <div className="flex items-center gap-3 mb-3">
+                <Terminal className="w-3 h-3 text-primary" />
+                <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Simultaneous Node Logs</span>
             </div>
-
-            <div className="grid grid-cols-2 gap-3 md:gap-4">
-                <div className="bg-gray-900/40 p-4 rounded-xl border border-gray-800">
-                    <span className="text-[7px] md:text-[8px] font-black text-gray-500 uppercase block mb-1">Lot Size</span>
-                    <span className="text-xs md:text-sm font-mono font-black text-white">{analysis.suggestedLotSize}</span>
-                </div>
-                <div className="bg-gray-900/40 p-4 rounded-xl border border-gray-800">
-                    <span className="text-[7px] md:text-[8px] font-black text-gray-500 uppercase block mb-1">Position</span>
-                    <span className={`text-[8px] md:text-[9px] font-black uppercase ${
-                       analysis.recommendation === 'BUY' ? 'text-success' : 
-                       analysis.recommendation === 'SELL' ? 'text-danger' : 'text-gray-500'
-                    }`}>{analysis.recommendation}</span>
-                </div>
-                <div className="bg-danger/5 p-4 rounded-xl border border-danger/20">
-                    <span className="text-[7px] md:text-[8px] font-black text-danger uppercase block mb-1">Stop Loss</span>
-                    <span className="text-xs md:text-sm font-mono font-black text-white">{analysis.stopLoss?.toFixed(5) || 'AUTO'}</span>
-                </div>
-                <div className="bg-success/5 p-4 rounded-xl border border-success/20">
-                    <span className="text-[7px] md:text-[8px] font-black text-success uppercase block mb-1">Take Profit</span>
-                    <span className="text-xs md:text-sm font-mono font-black text-white">{analysis.takeProfit?.toFixed(5) || 'AUTO'}</span>
-                </div>
+            <div className="space-y-2 font-mono text-[8px] tracking-tight overflow-hidden h-16">
+                <p className={`text-success transition-all duration-300 ${brokerConfig?.metaApi?.isActive ? 'opacity-100' : 'opacity-20'}`}>
+                    [BRIDGE] Meta API Hook: {brokerConfig?.metaApi?.isActive ? 'BROADCASTING' : 'IDLE'}
+                </p>
+                <p className={`text-accent transition-all duration-300 ${brokerConfig?.mtPlatform?.isActive ? 'opacity-100' : 'opacity-20'}`}>
+                    [EA_NODE] Nexus_HFT_Pro.ex5: {brokerConfig?.mtPlatform?.isActive ? 'EXECUTING LOGIC' : 'IDLE'}
+                </p>
+                {analysis && <p className="text-white animate-fade-in">[SIGNAL] {analysis.recommendation} Identified @ {analysis.confidence}%</p>}
             </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-600 py-20 text-center">
-            <div className="relative mb-6">
-                <div className="w-12 h-12 md:w-16 md:h-16 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-                <Brain className="w-6 h-6 md:w-8 md:h-8 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-primary animate-pulse" />
-            </div>
-            <p className="text-[9px] md:text-[10px] font-black text-white uppercase tracking-widest">Awaiting Confluence...</p>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

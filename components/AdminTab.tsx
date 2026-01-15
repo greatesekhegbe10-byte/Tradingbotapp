@@ -1,10 +1,11 @@
 
+
 import React, { useState, useRef } from 'react';
-import { UserProfile, UserTier, GatewayConfig } from '../types';
-import { PaymentLog } from '../App';
-// Added ShieldCheck to the imports to resolve the reference error in the GATEWAYS section.
-import { Users, ShieldAlert, ShieldCheck, Star, Ban, CheckCircle, TrendingUp, DollarSign, UserPlus, CreditCard, Landmark, CheckCircle2, Clock, Settings, Key, Globe, Search, Filter, Smartphone, Zap, Save, AlertTriangle, Eye, EyeOff, Trash2, Lock, Upload, Image as ImageIcon } from 'lucide-react';
+// FIX: Consolidate missing type imports from types.ts
+import { UserProfile, UserTier, GatewayConfig, PaymentLog } from '../types';
+import { Users, ShieldAlert, ShieldCheck, Star, Ban, CheckCircle, TrendingUp, DollarSign, UserPlus, CreditCard, Landmark, CheckCircle2, Clock, Settings, Key, Globe, Search, Filter, Smartphone, Zap, Save, AlertTriangle, Eye, EyeOff, Trash2, Lock, Upload, Image as ImageIcon, History as HistoryIcon, MoreVertical, ArrowRight } from 'lucide-react';
 import { NEXUS_LOGO } from '../assets';
+import { PERMANENT_KEYS } from '../appConfig';
 
 interface AdminTabProps {
   users: UserProfile[];
@@ -24,21 +25,24 @@ interface AdminTabProps {
   currentLogo: string;
 }
 
-export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, stats, onUpdateGateways, onUpdateUser, onDeleteUser, onVerifyPayment, onUpdateLogo, currentLogo }) => {
+export const AdminTab: React.FC<AdminTabProps> = ({ users = [], payments = [], gateways = [], stats, onUpdateGateways, onUpdateUser, onDeleteUser, onVerifyPayment, onUpdateLogo, currentLogo }) => {
   const [activeSubTab, setActiveSubTab] = useState<'USERS' | 'PAYMENTS' | 'GATEWAYS' | 'SYSTEM'>('USERS');
   const [searchTerm, setSearchTerm] = useState('');
-  const [editedGateways, setEditedGateways] = useState<GatewayConfig[]>([...gateways]);
+  const [editedGateways, setEditedGateways] = useState<GatewayConfig[]>(gateways ? [...gateways] : []);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [paymentsUnlocked, setPaymentsUnlocked] = useState(false);
   const [passcodeInput, setPasscodeInput] = useState('');
-  const ROOT_PASSCODE = '08126972446';
+  const ROOT_PASSCODE = PERMANENT_KEYS.ADMIN.ROOT_PASSCODE;
 
   const handleGatewayChange = (index: number, field: keyof GatewayConfig, value: string | boolean) => {
     const updated = [...editedGateways];
-    updated[index] = { ...updated[index], [field]: value } as any;
-    setEditedGateways(updated);
+    if (updated[index]) {
+        updated[index] = { ...updated[index], [field]: value } as any;
+        setEditedGateways(updated);
+    }
   };
 
   const toggleKeyVisibility = (gatewayName: string) => {
@@ -58,7 +62,7 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
 
   const saveGateways = () => {
     onUpdateGateways(editedGateways);
-    alert("SYSTEM: Payment Infrastructure Re-Synced to Production.");
+    alert("SYSTEM: Permanent Infrastructure Re-Synced to Node.");
   };
 
   const unlockPayments = (e: React.FormEvent) => {
@@ -72,10 +76,24 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
     }
   };
 
-  const filteredPayments = payments.filter(p => 
-    p.userName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = (users || []).filter(u => {
+    const term = (searchTerm || "").toLowerCase();
+    return (
+        (u.name || "").toLowerCase().includes(term) || 
+        (u.email || "").toLowerCase().includes(term) ||
+        (u.id || "").toLowerCase().includes(term)
+    );
+  });
+
+  const filteredPayments = (payments || []).filter(p => {
+    const term = (searchTerm || "").toLowerCase();
+    return (
+        (p.userName || "").toLowerCase().includes(term) || 
+        (p.id || "").toLowerCase().includes(term)
+    );
+  });
+
+  const selectedUser = (users || []).find(u => u.id === selectedUserId);
 
   return (
     <div className="max-w-[1400px] mx-auto animate-fade-in pb-32">
@@ -85,9 +103,9 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
             <img src={currentLogo} alt="Nexus" className="w-12 h-12" />
           </div>
           <div>
-            <h1 className="text-6xl font-black text-white uppercase tracking-tighter italic">Alex Root Node</h1>
+            <h1 className="text-6xl font-black text-white uppercase tracking-tighter italic">{PERMANENT_KEYS.ADMIN.ROOT_NAME} Root Node</h1>
             <p className="text-accent/60 font-black uppercase tracking-[0.4em] text-[10px] flex items-center gap-2 mt-1">
-              Cluster Maintenance Hub v4.5
+              Infrastructure Hub v5.2 (Secure)
             </p>
           </div>
         </div>
@@ -95,72 +113,87 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
            <div className="bg-surface border border-gray-800 px-6 py-5 rounded-[2rem] flex flex-col items-center shadow-2xl">
               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Live Nodes</span>
-              <span className="text-2xl font-mono font-black text-white">{stats.activeNodes}</span>
+              <span className="text-2xl font-mono font-black text-white">{stats?.activeNodes || 0}</span>
            </div>
            <div className="bg-surface border border-gray-800 px-6 py-5 rounded-[2rem] flex flex-col items-center shadow-2xl">
               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Verified Settlements</span>
-              <span className="text-2xl font-mono font-black text-success animate-pulse">{stats.verifiedPayments}</span>
+              <span className="text-2xl font-mono font-black text-success animate-pulse">{stats?.verifiedPayments || 0}</span>
            </div>
            <div className="bg-surface border border-gray-800 px-6 py-5 rounded-[2rem] flex flex-col items-center shadow-2xl">
               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Treasury Rev</span>
-              <span className="text-2xl font-mono font-black text-primary">${stats.totalRevenue.toLocaleString()}</span>
+              <span className="text-2xl font-mono font-black text-primary">${stats?.totalRevenue?.toLocaleString() || '0'}</span>
            </div>
            <div className="bg-surface border border-gray-800 px-6 py-5 rounded-[2rem] flex flex-col items-center shadow-2xl">
               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Awaiting Flag</span>
-              <span className="text-2xl font-mono font-black text-amber-500">{stats.pendingPayments}</span>
+              <span className="text-2xl font-mono font-black text-amber-500">{stats?.pendingPayments || 0}</span>
            </div>
         </div>
       </header>
 
-      <div className="flex gap-4 mb-10 bg-gray-900/50 p-2 rounded-[2.5rem] border border-gray-800 w-fit backdrop-blur-3xl">
-          {[
-              { id: 'USERS', label: 'Nodes', icon: Users },
-              { id: 'PAYMENTS', label: 'Settlements', icon: CreditCard },
-              { id: 'GATEWAYS', label: 'Keys', icon: Settings },
-              { id: 'SYSTEM', label: 'Identity', icon: ImageIcon }
-          ].map(tab => (
-              <button 
-                key={tab.id}
-                onClick={() => setActiveSubTab(tab.id as any)}
-                className={`flex items-center gap-3 px-8 py-4 rounded-[2rem] text-[10px] font-black uppercase tracking-widest transition-all ${
-                    activeSubTab === tab.id ? 'bg-accent text-white shadow-2xl shadow-accent/40' : 'text-gray-500 hover:text-white'
-                }`}
-              >
-                  <tab.icon className="w-4 h-4" /> {tab.label}
-              </button>
-          ))}
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10">
+        <div className="flex gap-4 bg-gray-900/50 p-2 rounded-[2.5rem] border border-gray-800 w-fit backdrop-blur-3xl">
+            {[
+                { id: 'USERS', label: 'Node Registry', icon: Users },
+                { id: 'PAYMENTS', label: 'Settlements', icon: CreditCard },
+                { id: 'GATEWAYS', label: 'Infrastructure', icon: Settings },
+                { id: 'SYSTEM', label: 'Identity', icon: ImageIcon }
+            ].map(tab => (
+                <button 
+                  key={tab.id}
+                  onClick={() => { setActiveSubTab(tab.id as any); setSelectedUserId(null); }}
+                  className={`flex items-center gap-3 px-8 py-4 rounded-[2rem] text-[10px] font-black uppercase tracking-widest transition-all ${
+                      activeSubTab === tab.id ? 'bg-accent text-white shadow-2xl shadow-accent/40' : 'text-gray-500 hover:text-white'
+                  }`}
+                >
+                    <tab.icon className="w-4 h-4" /> {tab.label}
+                </button>
+            ))}
+        </div>
+
+        <div className="relative w-full md:w-80">
+            <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+            <input 
+              type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search Cluster..."
+              className="w-full bg-surface border border-gray-800 rounded-full py-4 pl-14 pr-6 text-xs text-white font-black uppercase tracking-widest outline-none focus:border-accent transition-all"
+            />
+        </div>
       </div>
 
       <div className="grid grid-cols-12 gap-10">
         <div className="col-span-12 space-y-10">
           
-          {activeSubTab === 'USERS' && (
+          {activeSubTab === 'USERS' && !selectedUserId && (
             <section className="bg-surface rounded-[4rem] border border-gray-800 p-10 shadow-2xl animate-fade-in">
-                <h2 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-4 mb-12">
-                    <Users className="w-7 h-7 text-accent" /> Node Provisioning Registry
-                </h2>
+                <div className="flex justify-between items-center mb-12">
+                  <h2 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-4">
+                      <Users className="w-7 h-7 text-accent" /> Node Provisioning Registry
+                  </h2>
+                </div>
                 <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead>
                     <tr className="text-[10px] text-gray-500 font-black uppercase tracking-widest border-b border-gray-800">
                         <th className="px-8 py-6">Node Holder</th>
                         <th className="px-8 py-6">License Grade</th>
-                        <th className="px-8 py-6">Node Status</th>
+                        <th className="px-8 py-6 text-center">Node Status</th>
                         <th className="px-8 py-6 text-right">Liquidity</th>
-                        <th className="px-8 py-6 text-center">Root Actions</th>
+                        <th className="px-8 py-6 text-center">Management</th>
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/50">
-                    {users.map(u => (
+                    {filteredUsers.map(u => (
                         <tr key={u.id} className="group hover:bg-accent/5 transition-all">
                         <td className="px-8 py-8">
                             <div className="flex items-center gap-5">
                             <div className="w-12 h-12 rounded-[1.5rem] bg-gray-900 flex items-center justify-center text-accent font-black text-lg border border-gray-800 shadow-xl overflow-hidden">
-                                {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" /> : u.name.charAt(0)}
+                                {u.photoURL ? <img src={u.photoURL} className="w-full h-full object-cover" /> : (u.name || "?").charAt(0)}
                             </div>
                             <div>
-                                <p className="text-base font-black text-white uppercase tracking-tighter">{u.name}</p>
-                                <p className="text-[10px] text-gray-500 font-mono tracking-wider">{u.email}</p>
+                                <p className="text-base font-black text-white uppercase tracking-tighter">{u.name || "Unknown Node"}</p>
+                                <p className="text-[10px] text-gray-500 font-mono tracking-wider">{u.email || "No Email"}</p>
                             </div>
                             </div>
                         </td>
@@ -177,27 +210,37 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                             <option value="VIP">VIP (UNLOCKED)</option>
                             </select>
                         </td>
-                        <td className="px-8 py-8">
+                        <td className="px-8 py-8 text-center">
                             <button 
                             onClick={() => onUpdateUser(u.id, { status: u.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' })}
-                            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-3 border transition-all ${
+                            className={`mx-auto px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-3 border transition-all ${
                                 u.status === 'ACTIVE' ? 'bg-success/10 border-success/30 text-success' : 'bg-danger/10 border-danger/30 text-danger'
                             }`}
                             >
                             <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'ACTIVE' ? 'bg-success animate-pulse' : 'bg-danger'}`}></div>
-                            {u.status}
+                            {u.status || "IDLE"}
                             </button>
                         </td>
                         <td className="px-8 py-8 text-right font-mono font-black text-white text-base">
-                            ${u.balance.toLocaleString()}
+                            ${(u.balance || 0).toLocaleString()}
                         </td>
                         <td className="px-8 py-8 text-center">
-                            <button 
-                                onClick={() => { if(confirm(`Confirm permanent removal of node ${u.id}?`)) onDeleteUser(u.id); }}
-                                className="p-3 bg-red-500/10 text-red-500 rounded-2xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all shadow-lg"
-                            >
-                                <Trash2 className="w-5 h-5" />
-                            </button>
+                           <div className="flex items-center justify-center gap-2">
+                              <button 
+                                  onClick={() => setSelectedUserId(u.id)}
+                                  className="p-3 bg-primary/10 text-primary rounded-2xl border border-primary/20 hover:bg-primary hover:text-white transition-all shadow-lg"
+                                  title="View User Details"
+                              >
+                                  <HistoryIcon className="w-5 h-5" />
+                              </button>
+                              <button 
+                                  onClick={() => { if(confirm(`Confirm permanent removal of node ${u.id}?`)) onDeleteUser(u.id); }}
+                                  className="p-3 bg-red-500/10 text-red-500 rounded-2xl border border-red-500/20 hover:bg-red-500 hover:text-white transition-all shadow-lg"
+                                  title="Remove Node"
+                              >
+                                  <Trash2 className="w-5 h-5" />
+                              </button>
+                           </div>
                         </td>
                         </tr>
                     ))}
@@ -205,6 +248,65 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                 </table>
                 </div>
             </section>
+          )}
+
+          {selectedUserId && selectedUser && (
+             <section className="bg-surface rounded-[4rem] border border-gray-800 p-12 shadow-2xl animate-fade-in">
+                <div className="flex items-center justify-between mb-12">
+                   <button onClick={() => setSelectedUserId(null)} className="text-xs font-black text-gray-500 hover:text-white uppercase tracking-widest flex items-center gap-2">
+                      <ArrowRight className="w-4 h-4 rotate-180" /> Back to Registry
+                   </button>
+                   <h2 className="text-xl font-black text-white uppercase tracking-tighter">Node Detail: {selectedUser.name}</h2>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                   <div className="bg-gray-900/60 p-8 rounded-[2.5rem] border border-gray-800">
+                      <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-4">Liquidity Cluster</p>
+                      <p className="text-3xl font-mono font-black text-white">${(selectedUser.balance || 0).toLocaleString()}</p>
+                   </div>
+                   <div className="bg-gray-900/60 p-8 rounded-[2.5rem] border border-gray-800">
+                      <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-4">Total Nodes (History)</p>
+                      <p className="text-3xl font-mono font-black text-primary">{selectedUser.history?.length || 0}</p>
+                   </div>
+                   <div className="bg-gray-900/60 p-8 rounded-[2.5rem] border border-gray-800">
+                      <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-4">Gateway Performance</p>
+                      <p className="text-3xl font-mono font-black text-success">100%</p>
+                   </div>
+                </div>
+
+                <div className="space-y-6">
+                   <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                      <CreditCard className="w-4 h-4 text-accent" /> Settlement History
+                   </h3>
+                   <div className="bg-black/30 rounded-[2rem] border border-gray-800 overflow-hidden">
+                      <table className="w-full text-left">
+                         <thead className="bg-gray-900/50 text-[8px] font-black text-gray-500 uppercase tracking-widest">
+                            <tr>
+                               <th className="px-8 py-4">Transaction ID</th>
+                               <th className="px-8 py-4">Protocol</th>
+                               <th className="px-8 py-4">Value</th>
+                               <th className="px-8 py-4 text-right">Timestamp</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-gray-800/40">
+                            {(selectedUser.history || []).map((h: any) => (
+                               <tr key={h.id} className="text-[10px] font-black uppercase">
+                                  <td className="px-8 py-5 text-gray-400 font-mono">{h.id}</td>
+                                  <td className="px-8 py-5 text-white">{h.type}</td>
+                                  <td className="px-8 py-5 text-success">${h.amount}</td>
+                                  <td className="px-8 py-5 text-right text-gray-600">{h.date}</td>
+                               </tr>
+                            ))}
+                            {(!selectedUser.history || selectedUser.history.length === 0) && (
+                               <tr>
+                                  <td colSpan={4} className="px-8 py-10 text-center text-gray-600 text-[10px] font-black uppercase">No settlement data in cluster.</td>
+                               </tr>
+                            )}
+                         </tbody>
+                      </table>
+                   </div>
+                </div>
+             </section>
           )}
 
           {activeSubTab === 'SYSTEM' && (
@@ -285,10 +387,10 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                         {filteredPayments.map(p => (
                             <tr key={p.id} className="text-xs group hover:bg-white/5 transition-all">
                                 <td className="px-8 py-6 font-mono text-gray-400 font-bold">{p.id}</td>
-                                <td className="px-8 py-6 font-black text-white uppercase tracking-tight">{p.userName}</td>
+                                <td className="px-8 py-6 font-black text-white uppercase tracking-tight">{p.userName || "Unknown"}</td>
                                 <td className="px-8 py-6">
                                     <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black border uppercase ${p.gateway === 'PAYSTACK' ? 'text-blue-400 border-blue-500/30 bg-blue-500/5' : 'text-success border-success/30 bg-success/5'}`}>
-                                        {p.gateway}
+                                        {p.gateway || "UNKNOWN"}
                                     </span>
                                 </td>
                                 <td className="px-8 py-6 text-right">
@@ -321,16 +423,16 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                         onClick={saveGateways}
                         className="px-10 py-5 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-[2rem] flex items-center gap-4 shadow-2xl shadow-primary/20 hover:scale-105 transition-all"
                       >
-                          <Save className="w-4 h-4" /> Save Cloud Keys
+                          <Save className="w-4 h-4" /> Hard-Sync Nodes
                       </button>
                   </div>
                   <h2 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-4 mb-16">
-                      <Settings className="w-7 h-7 text-primary" /> Infrastructure Maintenance
+                      <ShieldCheck className="w-7 h-7 text-primary" /> Permanent Infrastructure Link
                   </h2>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                      {editedGateways.map((gw, idx) => (
-                        <div key={gw.name} className="bg-gray-900/40 p-10 rounded-[3rem] border border-gray-800 space-y-10 relative group">
+                      {(editedGateways || []).map((gw, idx) => (
+                        <div key={gw.name} className="bg-gray-900/40 p-10 rounded-[3rem] border border-gray-800 space-y-10 relative group border-t-4 border-t-primary/20">
                            <div className="flex items-center justify-between">
                               <div className="flex items-center gap-5">
                                  <div className={`p-4 rounded-3xl ${gw.name === 'PAYSTACK' ? 'bg-blue-500/20' : 'bg-success/20'}`}>
@@ -339,18 +441,21 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter">{gw.name} GATE</h3>
                               </div>
                               <div className="flex items-center gap-3">
+                                <span title="Locked by Node Protocol">
+                                  <Lock className="w-5 h-5 text-gray-700" />
+                                </span>
                                 <input type="checkbox" checked={gw.isActive} onChange={(e) => handleGatewayChange(idx, 'isActive', e.target.checked)} className="accent-primary w-5 h-5 cursor-pointer" />
                               </div>
                            </div>
                            
                            <div className="space-y-8">
                                <div className="space-y-3">
-                                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Public Key (Live)</label>
+                                   <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest ml-1">Hardcoded Public Key</label>
                                    <div className="relative">
                                        <Globe className="absolute left-5 top-5 w-4 h-4 text-gray-700" />
                                        <input 
                                           type="text" 
-                                          value={gw.publicKey} 
+                                          value={gw.publicKey || ''} 
                                           onChange={(e) => handleGatewayChange(idx, 'publicKey', e.target.value)}
                                           className="w-full bg-black border border-gray-800 rounded-3xl py-5 pl-14 pr-6 text-xs text-white font-mono outline-none focus:border-primary transition-all" 
                                        />
@@ -358,7 +463,7 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                                </div>
                                <div className="space-y-3">
                                    <div className="flex justify-between items-center px-1">
-                                       <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Secret Key (Encrypted)</label>
+                                       <label className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Hardcoded Secret Key</label>
                                        <button onClick={() => toggleKeyVisibility(gw.name)} className="text-gray-500 hover:text-white">
                                            {showKeys[gw.name] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                        </button>
@@ -367,7 +472,7 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                                        <Key className="absolute left-5 top-5 w-4 h-4 text-gray-700" />
                                        <input 
                                           type={showKeys[gw.name] ? "text" : "password"}
-                                          value={gw.secretKey} 
+                                          value={gw.secretKey || ''} 
                                           onChange={(e) => handleGatewayChange(idx, 'secretKey', e.target.value)}
                                           className="w-full bg-black border border-gray-800 rounded-3xl py-5 pl-14 pr-6 text-xs text-white font-mono outline-none focus:border-primary transition-all" 
                                        />
@@ -394,7 +499,7 @@ export const AdminTab: React.FC<AdminTabProps> = ({ users, payments, gateways, s
                                        <Smartphone className="absolute left-5 top-5 w-4 h-4 text-gray-700" />
                                        <input 
                                           type="text" 
-                                          value={gw.webhookUrl} 
+                                          value={gw.webhookUrl || ''} 
                                           onChange={(e) => handleGatewayChange(idx, 'webhookUrl', e.target.value)}
                                           className="w-full bg-black border border-gray-800 rounded-3xl py-5 pl-14 pr-6 text-xs text-white font-mono outline-none focus:border-primary transition-all" 
                                        />
