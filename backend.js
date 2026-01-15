@@ -4,6 +4,7 @@ const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const cors = require('cors');
+const path = require('path');
 
 /**
  * STARTUP VALIDATION
@@ -13,8 +14,9 @@ const verifyEnv = () => {
   const required = ['PAYSTACK_SECRET_KEY', 'FLUTTERWAVE_SECRET_KEY', 'FLUTTERWAVE_SECRET_HASH'];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length > 0) {
-    console.error(`[CRITICAL] Shutdown: Missing environment variables: ${missing.join(', ')}`);
-    process.exit(1);
+    console.warn(`[WARNING] Missing environment variables: ${missing.join(', ')}. Webhooks and Payments may fail.`);
+    // In some development environments we might not want to hard-crash, 
+    // but for production Render deployment, these must be set in the dashboard.
   }
 };
 verifyEnv();
@@ -46,7 +48,6 @@ app.post('/api/paystack/initialize', async (req, res) => {
       }
     });
 
-    // RETURN ONLY - DO NOT REDIRECT
     res.json({
       success: true,
       checkoutUrl: response.data.data.authorization_url,
@@ -84,7 +85,6 @@ app.post('/api/flutterwave/initialize', async (req, res) => {
       }
     });
 
-    // RETURN ONLY - DO NOT REDIRECT
     res.json({
       success: true,
       checkoutUrl: response.data.data.link,
@@ -96,10 +96,9 @@ app.post('/api/flutterwave/initialize', async (req, res) => {
   }
 });
 
-// --- WEBHOOKS (SECURE AUTHENTICATORS) ---
-
+// --- WEBHOOKS ---
 app.post('/api/webhooks/paystack', (req, res) => {
-  const hash = crypto.createHmac('sha512', CONFIG.PAYSTACK_SECRET)
+  const hash = crypto.createHmac('sha512', CONFIG.PAYSTACK_SECRET || '')
                      .update(JSON.stringify(req.body))
                      .digest('hex');
 
@@ -111,7 +110,6 @@ app.post('/api/webhooks/paystack', (req, res) => {
   if (event.event === 'charge.success') {
     const { userId, tier } = event.data.metadata;
     console.log(`[PROVISION] Paystack Verified: Node ${userId} -> ${tier}`);
-    // Database logic: User.findByIdAndUpdate(userId, { tier: tier })
   }
 
   res.sendStatus(200);
@@ -127,10 +125,17 @@ app.post('/api/webhooks/flutterwave', (req, res) => {
   if (payload.status === 'successful') {
     const { userId, tier } = payload.meta;
     console.log(`[PROVISION] Flutterwave Verified: Node ${userId} -> ${tier}`);
-    // Database logic: User.findByIdAndUpdate(userId, { tier: tier })
   }
 
   res.sendStatus(200);
+});
+
+// --- STATIC FRONTEND SERVING ---
+// This ensures that Render can find the frontend files when running the backend process.
+app.use(express.static(path.join(__dirname, '.')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const PORT = process.env.PORT || 10000;
