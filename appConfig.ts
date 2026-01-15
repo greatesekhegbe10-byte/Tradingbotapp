@@ -1,10 +1,9 @@
+
 /**
  * NEXUS TRADER - PERMANENT INFRASTRUCTURE CONFIG
- * NOTE: Sensitive keys are now managed via environment variables on the backend.
  */
 export const PERMANENT_KEYS = {
   PAYSTACK: {
-    // Public keys are safe for frontend, but secret keys must be in .env on the server
     PUBLIC_KEY: 'pk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 
     IS_ACTIVE: true
   },
@@ -18,8 +17,11 @@ export const PERMANENT_KEYS = {
     ROOT_EMAIL: 'alex.root@nexus.ai'
   },
   API: {
-    // Dynamically resolve the base URL for production compatibility
-    BASE_URL: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:10000'
+    // SaaS Hub URL (Render/PaaS)
+    BASE_URL: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:10000',
+    // Dedicated VPS Trading Node URL (Set this to your VPS IP/Domain)
+    VPS_TRADING_NODE_URL: 'https://vps-trading-node.yourdomain.com',
+    INTERNAL_AUTH_TOKEN: 'NX-SECURE-BRIDGE-TOKEN-2025'
   }
 };
 

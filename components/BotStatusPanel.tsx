@@ -1,7 +1,8 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnalysisResult, BotConfig, STRATEGIES, UserTier, UserProfile } from '../types';
-import { Brain, Play, Square, Crown, Zap, Shield, Target, Info, Search, Clock, Activity, Cpu, Webhook, Landmark, Terminal, BarChart4, TrendingUp, TrendingDown, ArrowRightCircle } from 'lucide-react';
+import { Brain, Play, Square, Crown, Zap, Shield, Target, Info, Search, Clock, Activity, Cpu, Webhook, Landmark, Terminal, BarChart4, TrendingUp, TrendingDown, ArrowRightCircle, Globe, ZapOff } from 'lucide-react';
+import { PERMANENT_KEYS } from '../appConfig';
 
 interface BotStatusPanelProps {
   analysis: AnalysisResult | null;
@@ -16,6 +17,23 @@ interface BotStatusPanelProps {
 export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({ 
   analysis, config, user, onToggleActive, onToggleAuto, isAnalyzing, livePrice 
 }) => {
+  const [nodeHealth, setNodeHealth] = useState<{status: string, message?: string}>({ status: 'CHECKING' });
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${PERMANENT_KEYS.API.BASE_URL}/api/node/health`);
+        const data = await res.json();
+        setNodeHealth(data);
+      } catch (e) {
+        setNodeHealth({ status: 'DISCONNECTED' });
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const userTier = user.tier;
   const tierMeta = {
     'BASIC': { color: 'text-gray-400', border: 'border-gray-800', bg: 'bg-gray-900', icon: Shield },
@@ -25,8 +43,6 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({
 
   const currentTier = tierMeta[userTier] || tierMeta['BASIC'];
   const TierIcon = currentTier.icon;
-  const activeStrategy = STRATEGIES.find(s => s.id === config.strategyId) || STRATEGIES[0];
-
   const brokerConfig = user.brokerConfig;
 
   return (
@@ -65,8 +81,28 @@ export const BotStatusPanel: React.FC<BotStatusPanelProps> = ({
         </div>
       </div>
 
+      {/* NODE BRIDGE HEALTH INDICATOR */}
+      <div className="px-8 pt-6">
+        <div className={`p-4 rounded-3xl border flex items-center justify-between transition-all ${
+          nodeHealth.status === 'CONNECTED' ? 'bg-success/5 border-success/20' : 'bg-danger/5 border-danger/20'
+        }`}>
+          <div className="flex items-center gap-3">
+             {nodeHealth.status === 'CONNECTED' ? <Globe className="w-4 h-4 text-success" /> : <ZapOff className="w-4 h-4 text-danger" />}
+             <div>
+                <p className="text-[7px] text-gray-500 font-black uppercase tracking-widest">VPS Bridge Node</p>
+                <p className={`text-[10px] font-black uppercase ${nodeHealth.status === 'CONNECTED' ? 'text-success' : 'text-danger'}`}>
+                  {nodeHealth.status === 'CONNECTED' ? 'Liquidity Verified' : 'Bridge Error'}
+                </p>
+             </div>
+          </div>
+          <span className="text-[8px] font-mono font-black text-gray-600 italic">
+            {nodeHealth.status === 'CONNECTED' ? 'STATIC_IP_ACTIVE' : 'IP_BLOCKED_OR_OFFLINE'}
+          </span>
+        </div>
+      </div>
+
       {/* NEXT-GEN TRADING PANEL: LOT / SL / TP */}
-      <div className="px-8 pt-8 grid grid-cols-3 gap-3">
+      <div className="px-8 pt-6 grid grid-cols-3 gap-3">
           <div className="bg-gray-900/40 p-5 rounded-3xl border border-gray-800 flex flex-col items-center text-center">
              <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-1">Lot Size</span>
              <span className="text-xs font-mono font-black text-white italic">{analysis?.suggestedLotSize || 'AUTO'}</span>
