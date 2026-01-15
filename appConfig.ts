@@ -1,4 +1,3 @@
-
 /**
  * NEXUS TRADER - PERMANENT INFRASTRUCTURE CONFIG
  * NOTE: Sensitive keys are now managed via environment variables on the backend.
@@ -19,8 +18,8 @@ export const PERMANENT_KEYS = {
     ROOT_EMAIL: 'alex.root@nexus.ai'
   },
   API: {
-    // Your production backend URL
-    BASE_URL: 'http://localhost:10000' 
+    // Dynamically resolve the base URL for production compatibility
+    BASE_URL: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:10000'
   }
 };
 
