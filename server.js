@@ -35,22 +35,53 @@ app.post('/api/paystack/initialize', async (req, res) => {
   }
 });
 
+app.post('/api/flutterwave/initialize', async (req, res) => {
+  const { email, amount, tier, userId, name } = req.body;
+  const tx_ref = `NX-FLW-${Date.now()}-${userId}`;
+  try {
+    const response = await axios.post('https://api.flutterwave.com/v3/payments', {
+      tx_ref, amount, currency: "USD",
+      redirect_url: `${req.headers.origin}/?status=success`,
+      meta: { userId, tier },
+      customer: { email, name },
+      customizations: { title: "NexusTrade AI License", description: `Grade: ${tier} Node Provisioning` }
+    }, {
+      headers: {
+        Authorization: `Bearer ${CONFIG.FLW_SECRET}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    res.json({ success: true, checkoutUrl: response.data.data.link, reference: tx_ref });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e.response?.data?.message || e.message });
+  }
+});
+
 // --- TRADING BRIDGE (PROXY TO VPS) ---
-// This ensures frontend only talks to SaaS, and SaaS talks to VPS over secure line
 app.post('/api/trading/execute', async (req, res) => {
   try {
+    if (!CONFIG.VPS_URL || CONFIG.VPS_URL.includes('yourdomain.com')) {
+      throw new Error('VPS Not Configured');
+    }
     const response = await axios.post(`${CONFIG.VPS_URL}/execute`, req.body, {
-      headers: { 'Authorization': `Bearer ${CONFIG.BRIDGE_TOKEN}` }
+      headers: { 'Authorization': `Bearer ${CONFIG.BRIDGE_TOKEN}` },
+      timeout: 5000
     });
     res.json(response.data);
   } catch (e) {
-    // If VPS is not set up yet, fallback to simulation
-    res.json({ success: true, mode: 'SIMULATION', message: 'VPS Node Offline - Executing via SaaS Hub Simulation' });
+    res.json({ 
+      success: true, 
+      mode: 'SIMULATION', 
+      message: 'VPS Node Offline - Executing via SaaS Hub Simulation Fallback' 
+    });
   }
 });
 
 app.get('/api/node/health', async (req, res) => {
   try {
+    if (!CONFIG.VPS_URL || CONFIG.VPS_URL.includes('yourdomain.com')) {
+      return res.json({ status: 'SIMULATED', message: 'Demo Mode Active' });
+    }
     const response = await axios.get(`${CONFIG.VPS_URL}/health`, { timeout: 2000 });
     res.json({ status: 'CONNECTED', ip: response.data.ip });
   } catch (e) {
@@ -65,4 +96,4 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`[SAAS HUB] Active on Port ${PORT}`));
+app.listen(PORT, () => console.log(`[SAAS HUB] NexusNode Active on Port ${PORT}`));

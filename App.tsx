@@ -62,10 +62,15 @@ const App: React.FC = () => {
 
   const newsFeedItems = useMemo(() => generateNewsFeed(config.pair), [config.pair]);
 
+  const pushAlert = (msg: string) => {
+    const id = Date.now().toString();
+    setAlertQueue(prev => [...prev, { id, msg }]);
+    setTimeout(() => setAlertQueue(prev => prev.filter(a => a.id !== id)), 5000);
+  };
+
   const handleLogout = useCallback(() => {
     localStorage.removeItem('nexus_auth');
     localStorage.removeItem('nexus_user');
-    localStorage.removeItem('nexus_managed_users');
     setIsAuthenticated(false);
     setUser(null);
     setTrades([]);
@@ -77,9 +82,7 @@ const App: React.FC = () => {
     if (user) {
       const newMode = user.mode === 'PAPER' ? 'LIVE' : 'PAPER';
       if (newMode === 'LIVE' && user.tier === 'BASIC') {
-        const id = Date.now().toString();
-        setAlertQueue(prev => [...prev, { id, msg: 'LIVE MODE requires PRO Node Provisioning.' }]);
-        setTimeout(() => setAlertQueue(prev => prev.filter(a => a.id !== id)), 5000);
+        pushAlert('LIVE MODE requires PRO Node Provisioning.');
         return;
       }
       const updatedUser = { ...user, mode: newMode };
@@ -104,7 +107,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!config.isActive || isAnalyzing) return;
     
-    // Bot Activation Logic: No verified plan (PRO/VIP) -> No Bot on Live/Advanced
     if (user?.mode === 'LIVE' && user.tier === 'BASIC') {
        setConfig(prev => ({ ...prev, isActive: false }));
        return;
@@ -127,16 +129,32 @@ const App: React.FC = () => {
               status: 'OPEN', mode: user?.mode || 'PAPER', payout: 0.85,
               lotSize: res.suggestedLotSize
             };
+
+            // VPS BRIDGE EXECUTION PROTOCOL
+            try {
+              const bridgeRes = await fetch(`${PERMANENT_KEYS.API.BASE_URL}/api/trading/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newTrade)
+              });
+              const bridgeData = await bridgeRes.json();
+              
+              if (bridgeData.mode === 'SIMULATION') {
+                pushAlert(`BRIDGE FALLBACK: Simulation Active (${res.recommendation})`);
+              } else {
+                pushAlert(`VPS EXECUTION: ${res.recommendation} Verified on IP Bridge`);
+              }
+            } catch (err) {
+              pushAlert(`BRIDGE ERROR: Fallback to SaaS Simulation`);
+            }
+
             setTrades(p => [newTrade, ...p].slice(0, 50));
-            const id = Date.now().toString();
-            setAlertQueue(prev => [...prev, { id, msg: `HFT EXECUTION: ${res.recommendation} @ ${res.confidence}%` }]);
-            setTimeout(() => setAlertQueue(prev => prev.filter(a => a.id !== id)), 5000);
           }
         }
       } catch (e) {} finally { setIsAnalyzing(false); }
     };
 
-    const interval = setInterval(analyze, 5000); 
+    const interval = setInterval(analyze, 7000); 
     return () => clearInterval(interval);
   }, [config.isActive, config.isAutoTrade, marketData, config.pair, currentPrice, config.tier, user?.mode, config.minConfidence, config.riskPerTrade, user?.tier]);
 
@@ -162,24 +180,13 @@ const App: React.FC = () => {
     localStorage.setItem('nexus_user', JSON.stringify(p));
   }} />;
 
-  const NavItems = () => (
-    <div className="flex flex-col h-full gap-2">
-      <button onClick={() => { setActiveView('dashboard'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'dashboard' ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><LayoutDashboard className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Live HUD</span></button>
-      <button onClick={() => { setActiveView('ledger'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'ledger' ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><History className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Resolution</span></button>
-      <button onClick={() => { setActiveView('settings'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'settings' ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><Sliders className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Cluster Config</span></button>
-      {isAdmin && <button onClick={() => { setActiveView('admin'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'admin' ? 'bg-amber-500 text-black shadow-xl' : 'text-amber-500/60 hover:text-white'}`}><ShieldAlert className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Root Console</span></button>}
-      <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl text-danger hover:bg-danger/10 transition-all mt-auto"><Power className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Terminate Node</span></button>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-[#070b14] flex flex-col lg:flex-row overflow-hidden font-sans">
-      {/* Alert Overlay */}
       <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 w-full max-w-md px-4 pointer-events-none">
         {alertQueue.map(alert => (
           <div key={alert.id} className="bg-surface/80 backdrop-blur-3xl border border-primary/20 p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-fade-in pointer-events-auto">
              <div className="p-2 bg-primary/10 rounded-xl">
-               <BellRing className="w-4 h-4 text-primary animate-ring" />
+               <BellRing className="w-4 h-4 text-primary" />
              </div>
              <p className="text-[10px] font-black text-white uppercase tracking-widest leading-relaxed">
                {alert.msg}
@@ -197,15 +204,14 @@ const App: React.FC = () => {
             <h1 className="text-xl font-black text-white uppercase tracking-tighter italic">NexusTrade</h1>
         </div>
         <nav className="flex-1">
-            <NavItems />
+            <div className="flex flex-col h-full gap-2">
+              <button onClick={() => setActiveView('dashboard')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'dashboard' ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><LayoutDashboard className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Live HUD</span></button>
+              <button onClick={() => setActiveView('ledger')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'ledger' ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><History className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Resolution</span></button>
+              <button onClick={() => setActiveView('settings')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'settings' ? 'bg-primary text-white shadow-xl shadow-primary/20' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}><Sliders className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Cluster Config</span></button>
+              {isAdmin && <button onClick={() => setActiveView('admin')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'admin' ? 'bg-amber-500 text-black shadow-xl' : 'text-amber-500/60 hover:text-white'}`}><ShieldAlert className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Root Console</span></button>}
+              <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl text-danger hover:bg-danger/10 transition-all mt-auto"><Power className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-[0.2em]">Terminate Node</span></button>
+            </div>
         </nav>
-        <div className="p-6 bg-primary/5 border border-primary/20 rounded-[2rem] shadow-inner text-center">
-           <p className="text-[8px] text-primary font-black uppercase mb-2 tracking-[0.3em]">HFT Sync Pulse</p>
-           <div className="flex items-center justify-center gap-2">
-              <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-              <span className="text-[10px] text-white font-black uppercase tracking-widest">Global Clusters Live</span>
-           </div>
-        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -225,7 +231,6 @@ const App: React.FC = () => {
                    {user?.mode === 'LIVE' ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
                 </button>
             </div>
-            
             <div className="flex gap-4">
                <button onClick={() => setIsUpgradeModalOpen(true)} className="px-6 py-3 bg-primary text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-primary/30">Provision Node</button>
             </div>
@@ -240,7 +245,6 @@ const App: React.FC = () => {
                        <StatsCard label="HFT Win Rate" value={`${user?.stats?.winRate || 0}%`} trend="Institutional" icon={Target} color="text-success" />
                        <StatsCard label="Session DD" value={`${user?.stats?.drawdown || 0}%`} trend="Safe" icon={Shield} color="text-danger" />
                     </div>
-                    
                     <div className="grid grid-cols-1 2xl:grid-cols-4 gap-10">
                       <div className="2xl:col-span-3">
                         <ChartPanel data={marketData} pair={config.pair} trades={trades} analysis={analysis} />
@@ -249,10 +253,8 @@ const App: React.FC = () => {
                         <NewsFeed news={newsFeedItems} />
                       </div>
                     </div>
-                    
                     <TradeHistory trades={trades} onExecuteSignal={() => {}} />
                  </div>
-                 
                  <div className="xl:w-[450px] shrink-0">
                     <BotStatusPanel analysis={analysis} config={config} user={user} onToggleActive={() => setConfig(c => ({...c, isActive: !c.isActive}))} onToggleAuto={() => setConfig(c => ({...c, isAutoTrade: !c.isAutoTrade}))} isAnalyzing={isAnalyzing} livePrice={currentPrice} />
                  </div>
@@ -265,14 +267,13 @@ const App: React.FC = () => {
             )}
          </div>
 
-         {/* Compliance Footer Disclaimer */}
          <footer className="px-12 py-8 border-t border-gray-800 bg-[#0a101f] text-center">
             <div className="flex items-center justify-center gap-2 text-danger mb-2">
                <AlertCircle className="w-4 h-4" />
                <span className="text-[10px] font-black uppercase tracking-widest">Global Risk Disclosure</span>
             </div>
             <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed max-w-4xl mx-auto italic">
-              Trading financial instruments involves significant risk and can result in the loss of your invested capital. NexusTrade AI provides algorithmic analysis but does not guarantee profits. Past performance is not indicative of future results. By using this terminal, you acknowledge that all trading decisions are yours alone.
+              Trading financial instruments involves significant risk and can result in the loss of your invested capital. NexusTrade AI provides algorithmic analysis but does not guarantee profits. Past performance is not indicative of future results.
             </p>
          </footer>
       </main>

@@ -1,5 +1,7 @@
 {
   "name": "NexusTrade AI",
-  "description": "An advanced, AI-powered multi-broker trading terminal that visualizes real-time market data, utilizes Gemini 2.5 Flash for technical analysis, and simulates automated trade execution with dynamic risk management.",
-  "requestFramePermissions": []
+  "description": "An advanced, AI-powered multi-broker trading terminal that visualizes real-time market data, utilizes Gemini for technical analysis, and simulates automated trade execution with dynamic risk management.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
 }
