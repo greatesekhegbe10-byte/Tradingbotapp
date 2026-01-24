@@ -22,87 +22,102 @@ export const getPrice = (pair: string): number => {
   }
   
   let volatility = 0.0001;
-  if (pair.includes('BTC') || pair.includes('ETH') || pair.includes('SOL')) volatility = 5.0;
+  if (pair.includes('BTC') || pair.includes('ETH')) volatility = 5.0;
   else if (pair.includes('XAU')) volatility = 0.5;
   else if (pair.includes('JPY')) volatility = 0.02;
-  else if (pair.length <= 5) volatility = 1.2;
 
   const change = (Math.random() - 0.5) * 2 * volatility;
   priceState[pair] += change;
   return priceState[pair];
 };
 
-export const generateNewsFeed = (pair: string) => {
-  const assets = pair.split('/');
-  const base = assets[0];
-  const themes = [
-    { title: 'Inflation Data Surge', impact: 'HIGH', sentiment: 'BEARISH' },
-    { title: 'Institutional Liquidity Sweep', impact: 'MEDIUM', sentiment: 'BULLISH' },
-    { title: 'Yield Curve Inversion Warning', impact: 'HIGH', sentiment: 'BEARISH' },
-    { title: 'Massive Accumulation Detected', impact: 'HIGH', sentiment: 'BULLISH' },
-    { title: 'NFP Surprise Results', impact: 'MEDIUM', sentiment: 'NEUTRAL' },
-    { title: 'Central Bank Pivot Hinted', impact: 'HIGH', sentiment: 'BULLISH' },
-    { title: 'Retail Sell-off Exhaustion', impact: 'LOW', sentiment: 'BULLISH' }
-  ];
-  
-  // Return a consistent but randomized feed for the given pair
-  return themes.sort(() => Math.random() - 0.5).slice(0, 5).map((t, idx) => ({
-    id: `${pair}-${idx}`,
-    title: `${base}: ${t.title}`,
-    impact: t.impact,
-    sentiment: t.sentiment as any,
-    time: `${idx * 12 + 2}m ago`
-  }));
-};
+/**
+ * INSTITUTIONAL RISK MONITOR
+ * Monitors open positions against SL/TP/Trailing levels
+ */
+export class RiskMonitor {
+  static evaluateTrade(trade: Trade, currentPrice: number, config: BotConfig): Trade {
+    if (trade.status !== 'OPEN') return trade;
 
-export class SignalEngine {
-  static evaluate(analysis: AnalysisResult, config: BotConfig, currentPrice: number) {
-    let isBlocked = false;
-    let blockReason = '';
+    const isBuy = trade.type === 'BUY' || trade.type === 'CALL';
+    let updatedTrade = { ...trade };
 
-    // Efficiency Rule: 85% Confidence Threshold
-    if (analysis.confidence < 85) {
-      isBlocked = true;
-      blockReason = 'CONFIDENCE_THRESHOLD_NOT_MET';
+    // 1. Update High-Water Mark for Trailing SL
+    if (isBuy) {
+        if (!updatedTrade.maxPriceObserved || currentPrice > updatedTrade.maxPriceObserved) {
+            updatedTrade.maxPriceObserved = currentPrice;
+            
+            // If Trailing is enabled, move SL up
+            if (config.useTrailingStop) {
+                const distance = config.trailingDistancePips * 0.0001; // Simplistic pip conversion
+                const newSl = currentPrice - distance;
+                if (newSl > updatedTrade.sl) {
+                    updatedTrade.sl = newSl;
+                }
+            }
+        }
+    } else {
+        if (!updatedTrade.maxPriceObserved || currentPrice < updatedTrade.maxPriceObserved) {
+            updatedTrade.maxPriceObserved = currentPrice;
+            
+            if (config.useTrailingStop) {
+                const distance = config.trailingDistancePips * 0.0001;
+                const newSl = currentPrice + distance;
+                if (newSl < updatedTrade.sl) {
+                    updatedTrade.sl = newSl;
+                }
+            }
+        }
     }
 
-    // Profit Efficiency Rule: 1:3 RR Ratio
-    const riskAmount = Math.abs(currentPrice - analysis.stopLoss);
-    const rewardAmount = Math.abs(currentPrice - analysis.takeProfit);
-    const rrRatio = rewardAmount / (riskAmount || 0.00001); // Prevent division by zero
+    // 2. Evaluate Exit Conditions
+    let triggered = false;
+    let reason: 'SL' | 'TP' | 'TRAILING' | 'EXPIRY' | undefined;
 
-    if (rrRatio < 2.5) { // Relaxed slightly from 2.8 for better demo flow
-        isBlocked = true;
-        blockReason = 'INSUFFICIENT_RR_RATIO';
+    if (isBuy) {
+        if (currentPrice <= updatedTrade.sl) {
+            triggered = true;
+            reason = updatedTrade.maxPriceObserved && updatedTrade.maxPriceObserved > updatedTrade.price ? 'TRAILING' : 'SL';
+        } else if (currentPrice >= updatedTrade.tp) {
+            triggered = true;
+            reason = 'TP';
+        }
+    } else {
+        if (currentPrice >= updatedTrade.sl) {
+            triggered = true;
+            reason = updatedTrade.maxPriceObserved && updatedTrade.maxPriceObserved < updatedTrade.price ? 'TRAILING' : 'SL';
+        } else if (currentPrice <= updatedTrade.tp) {
+            triggered = true;
+            reason = 'TP';
+        }
     }
 
-    if (analysis.volatility === 'HIGH' && config.signalMode === 'CONSERVATIVE') {
-      isBlocked = true;
-      blockReason = 'HIGH_VOLATILITY_RESTRICTION';
+    // Binary Expiry Fallback (Optional backwards compatibility)
+    const elapsed = (Date.now() - new Date(trade.timestamp).getTime()) / 1000;
+    if (!triggered && elapsed > 180) { // 3 min hard expiry
+        triggered = true;
+        reason = 'EXPIRY';
     }
 
-    return {
-      isBlocked,
-      blockReason,
-      score: analysis.confidence,
-      signal: analysis.recommendation
-    };
+    if (triggered) {
+        const isWin = isBuy ? currentPrice > updatedTrade.price : currentPrice < updatedTrade.price;
+        return {
+            ...updatedTrade,
+            status: isWin ? 'WON' : 'LOST',
+            profit: isWin ? (trade.amount * 0.85) : -trade.amount,
+            exitReason: reason
+        };
+    }
+
+    return updatedTrade;
   }
 }
 
-export const resolveBinaryTrade = (trade: Trade, currentPrice: number): Trade => {
-  if (trade.status !== 'OPEN') return trade;
-  const elapsed = (Date.now() - new Date(trade.timestamp).getTime()) / 1000;
-  
-  if (elapsed < 30) return trade; 
-
-  const isWin = (trade.type === 'CALL' || trade.type === 'BUY')
-    ? currentPrice >= trade.price 
-    : currentPrice <= trade.price;
-
-  return {
-    ...trade,
-    status: isWin ? 'WON' : 'LOST',
-    profit: isWin ? (trade.amount * (trade.payout || 0.85)) : -trade.amount
-  };
-};
+export class SignalEngine {
+  static evaluate(analysis: AnalysisResult, config: BotConfig, currentPrice: number) {
+    if (analysis.confidence < config.minConfidence) {
+      return { isBlocked: true, blockReason: 'CONFIDENCE_LOW' };
+    }
+    return { isBlocked: false, signal: analysis.recommendation };
+  }
+}

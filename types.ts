@@ -21,6 +21,7 @@ export interface MarketDataPoint {
   volume: number;
 }
 
+// Added BrokerCredentials for dual engine configuration
 export interface BrokerCredentials {
   metaApi: {
     apiKey: string;
@@ -32,189 +33,46 @@ export interface BrokerCredentials {
   mtPlatform: {
     login: string;
     server: string;
-    password?: string;
     eaName: string;
-    eaStatus: 'IDLE' | 'EXECUTING' | 'ERROR';
+    eaStatus: string;
     isActive: boolean;
   };
 }
 
+// Added UserProfile to track user state and settings
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  photoURL?: string;
   tier: UserTier;
   role: AdminRole;
   balance: number;
   mode: TradingMode;
-  status: 'ACTIVE' | 'SUSPENDED';
-  paymentMethods: string[];
-  connectedBroker?: string;
-  brokerType?: ConnectionMethod;
-  isLiveAccount: boolean;
-  brokerConfig: BrokerCredentials;
-  staking: {
-    plan: StakingPlan;
-    multiplier: number;
-    currentStep: number;
+  status: 'ACTIVE' | 'SUSPENDED' | 'IDLE';
+  stats: {
+    winRate: number;
+    drawdown: number;
+    profitFactor?: number;
   };
-  stats: UserStats;
-  history: any[];
+  brokerConfig?: BrokerCredentials;
+  connectedBroker?: string;
+  brokerType?: ConnectionMethod | string;
+  isEmailVerified?: boolean;
+  photoURL?: string;
+  history?: any[];
 }
 
-export interface UserStats {
-  totalProfit: number;
-  winRate: number;
-  drawdown: number;
-  lossStreak: number;
-  sessionTrades: number;
-  lastTradeTime?: string;
-}
-
-export interface AnalysisResult {
-  recommendation: TradeType;
-  confidence: number; 
-  reasoning: string;
-  primarySignal: string;
-  confirmations: string[];
-  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
-  volatility: 'LOW' | 'MEDIUM' | 'HIGH';
-  suggestedLotSize: string;
-  stopLoss: number;
-  takeProfit: number;
-  newsContext: string;
-  candlestickPattern: string;
-  marketDefinition: string;
-  entryTiming: string;
-  recommendedStrategyId: string;
-}
-
-export interface Trade {
-  id: string;
-  symbol: string;
-  type: TradeType;
-  price: number;
-  amount: number;
-  lotSize?: string;
-  timestamp: Date;
-  status: 'OPEN' | 'WON' | 'LOST' | 'CLOSED';
-  mode: TradingMode;
-  profit?: number;
-  payout?: number;
-}
-
-export interface BotConfig {
-  isActive: boolean;
-  isAutoTrade: boolean;
-  killSwitch: boolean;
-  pair: string;
-  tier: UserTier;
-  strategyId: string;
-  maxDrawdown: number;
-  maxLossPercent: number; // New next-gen setting
-  riskPerTrade: number;
-  useTrailingStop: boolean;
-  stakingPlan: StakingPlan;
-  binaryExpiry: number;
-  signalMode: SignalMode;
-  maxTradesPerSession: number;
-  coolDownMinutes: number;
-  useAiSignals: boolean;
-  useNewsAnalysis: boolean;
-  minConfidence: number;
-  defaultStopLoss: number;
-  defaultTakeProfit: number;
-}
-
-const generatePairs = () => {
-  const configs: Record<string, any> = {};
-  const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'NZD', 'ZAR', 'MXN', 'TRY', 'BRL', 'INR', 'CNH', 'SGD'];
-  
-  currencies.forEach(c1 => {
-    currencies.forEach(c2 => {
-      if (c1 !== c2) {
-        const pair = `${c1}/${c2}`;
-        configs[pair] = { 
-          name: `${c1}${c2} Institutional`, 
-          precision: c2 === 'JPY' ? 3 : 5, 
-          requiredTier: ['TRY', 'BRL', 'ZAR'].includes(c1) || ['TRY', 'BRL', 'ZAR'].includes(c2) ? 'PRO' : 'BASIC' 
-        };
-      }
-    });
-  });
-
-  ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'DOT', 'AVAX', 'LINK', 'DOGE', 'SHIB', 'MATIC', 'LTC', 'BCH', 'UNI'].forEach(coin => {
-    configs[`${coin}/USD`] = { name: `${coin} / US Dollar`, precision: 2, requiredTier: 'BASIC' };
-    configs[`${coin}/BTC`] = { name: `${coin} / Bitcoin`, precision: 8, requiredTier: 'PRO' };
-  });
-
-  ['TSLA', 'AAPL', 'NVDA', 'AMZN', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'INTC', 'PYPL', 'SHOP'].forEach(stock => {
-    configs[stock] = { name: `${stock} Equity`, precision: 2, requiredTier: 'PRO' };
-  });
-
-  ['XAU/USD', 'XAG/USD', 'WTI/USD', 'BRENT/USD', 'NATGAS/USD', 'COPPER/USD'].forEach(com => {
-    configs[com] = { name: com.split('/')[0] + ' Spot', precision: 2, requiredTier: 'PRO' };
-  });
-
-  return configs;
-};
-
-export const PAIR_CONFIGS = generatePairs();
-
-export const STRATEGIES = [
-  { id: 'BASIC_RSI', name: 'Neural RSI Momentum', description: 'Basic relative strength filtering for trending markets.', winRate: 65, tier: 'BASIC' },
-  { id: 'PRO_SENTINEL', name: 'Sentinel Delta Scanner', description: 'Volume-weighted delta divergence for institutional entries.', winRate: 78, tier: 'PRO' },
-  { id: 'VIP_LIQUIDITY', name: 'Void Finder AI', description: 'SMC fair value gap and liquidity sweep detection.', winRate: 88, tier: 'VIP' },
-  { id: 'HFT_SNIPER', name: 'HFT Sniper Logic', description: 'Ultra-low latency tick analysis for micro-reversals.', winRate: 94, tier: 'VIP' }
-];
-
-// Exact 50 Binary Options Brokers
-export const BINARY_BROKERS = [
-  'Pocket Option', 'Deriv (Institutional)', 'Quotex', 'IQ Option', 'Olymp Trade', 
-  'Binomo', 'ExpertOption', 'Spectre.ai', 'Nadex', 'Binary.com',
-  'RaceOption', 'VideForex', 'BinaryCent', 'Pocket Option Pro', 'IQCent', 
-  'CloseOption', 'Focus Option', 'Intrade.bar', 'Binarium', 'Finmax',
-  'Ayrex', 'Dukascopy Binary', 'ETX Capital', 'Hirose Financial', 'IG Binary', 
-  'CMC Markets Binary', 'Saxo Bank Binary', 'Swissquote Binary', 'AvaTrade Binary', 'HotForex Binary',
-  'XM Binary', 'FBS Binary', 'OctaFX Binary', 'Exness Binary', 'RoboForex Binary', 
-  'Tickmill Binary', 'Pepperstone Binary', 'IC Markets Binary', 'Vantage Binary', 'FP Markets Binary',
-  'Admiral Markets Binary', 'Alpari Binary', 'FXTM Binary', 'IronFX Binary', 'HFM Binary', 
-  'BDSwiss Binary', 'Axi Binary', 'ThinkMarkets Binary', 'BlackBull Binary', 'Eightcap Binary'
-];
-
-// Exact 50 Institutional (MT4/MT5) Brokers
-export const INSTITUTIONAL_BROKERS = [
-  'IC Markets Global', 'Exness Institutional', 'Pepperstone', 'Interactive Brokers', 'MT5 Institutional', 
-  'Saxo Bank', 'Dukascopy', 'Swissquote', 'LMAX Global', 'CMC Markets',
-  'IG Markets', 'City Index', 'FOREX.com', 'OANDA', 'XM Group', 
-  'HotForex (HFM)', 'FXCM', 'Admiral Markets', 'Alpari', 'AvaTrade',
-  'Axi', 'BDSwiss', 'BlackBull Markets', 'Capital.com', 'Eightcap', 
-  'FP Markets', 'FXPro', 'FXTM', 'HYCM', 'IronFX',
-  'Markets.com', 'Moneta Markets', 'OctaFX', 'Orbex', 'PrimeXBT', 
-  'PU Prime', 'RoboForex', 'ThinkMarkets', 'Tickmill', 'TMGM',
-  'Vantage Markets', 'VT Markets', 'Windzor Global', 'XTB', 'Zenfinex', 
-  'Z.com', 'Key To Markets', 'JFD Bank', 'Global Prime', 'Axiory'
-];
-
-export const CRYPTO_BROKERS = [
-  'Binance Cloud', 'Coinbase Institutional', 'Kraken Pro', 'Bybit Institutional', 
-  'OKX Global', 'Bitget Pro', 'Gate.io Institutional', 'KuCoin Pro'
-];
-
-export const BROKER_ASSET_MAP: Record<string, string[]> = {
-  ...Object.fromEntries([...BINARY_BROKERS, ...INSTITUTIONAL_BROKERS, ...CRYPTO_BROKERS].map(b => [b, Object.keys(PAIR_CONFIGS)]))
-};
-
+// Added GatewayConfig for admin gateway management
 export interface GatewayConfig {
-  name: PaymentGateway;
+  name: string;
+  isActive: boolean;
   publicKey: string;
   secretKey: string;
-  isActive: boolean;
-  webhookUrl: string;
   secretHash?: string;
+  webhookUrl: string;
 }
 
+// Added PaymentLog for admin clearing house
 export interface PaymentLog {
   id: string;
   userId: string;
@@ -225,3 +83,111 @@ export interface PaymentLog {
   status: 'PENDING' | 'VERIFIED';
   timestamp: string;
 }
+
+// Added JournalEntry for the analytical journal
+export interface JournalEntry {
+  id: string;
+  tradeId: string;
+  pair: string;
+  type: TradeType;
+  profit: number;
+  rr: number;
+  setup: string;
+  timestamp: string;
+}
+
+export interface Trade {
+  id: string;
+  symbol: string;
+  type: TradeType | string;
+  price: number; // Entry Price
+  amount: number;
+  status: 'OPEN' | 'WON' | 'LOST';
+  timestamp: string;
+  payout?: number;
+  profit?: number;
+  // Risk Management Extensions
+  sl: number;
+  tp: number;
+  isTrailing?: boolean;
+  maxPriceObserved?: number; // Used for Trailing SL
+  exitReason?: 'SL' | 'TP' | 'TRAILING' | 'MANUAL' | 'EXPIRY';
+}
+
+export interface AnalysisResult {
+  recommendation: 'BUY' | 'SELL' | 'HOLD';
+  confidence: number;
+  marketDefinition: string;
+  candlestickPattern: string;
+  entryTiming: string;
+  recommendedStrategyId: string;
+  reasoning: string;
+  primarySignal: string;
+  confirmations: string[];
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  volatility: 'LOW' | 'MEDIUM' | 'HIGH';
+  suggestedLotSize: string;
+  stopLoss: number;
+  takeProfit: number;
+  newsContext: string;
+}
+
+export interface Signal {
+  id: string;
+  pair: string;
+  type: TradeType;
+  entry: number;
+  sl: number;
+  tp: number;
+  confidence: number;
+  timestamp: string;
+  strategyId: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'TRIGGERED';
+}
+
+export interface BotConfig {
+  isActive: boolean;
+  isAutoTrade: boolean;
+  killSwitch: boolean;
+  pair: string;
+  tier: UserTier;
+  strategyId: string;
+  riskPerTrade: number;
+  minConfidence: number;
+  isExecutionEnabled: boolean;
+  vpsStatus: 'ONLINE' | 'OFFLINE';
+  signalMode: SignalMode;
+  maxDrawdown: number;
+  stakingPlan: StakingPlan;
+  // Global Risk Defaults
+  useTrailingStop: boolean;
+  trailingDistancePips: number;
+}
+
+export const PAIR_CONFIGS: Record<string, { name: string, precision: number, requiredTier: UserTier }> = {
+  'EUR/USD': { name: 'Euro / US Dollar', precision: 5, requiredTier: 'BASIC' },
+  'BTC/USD': { name: 'Bitcoin / US Dollar', precision: 2, requiredTier: 'PRO' },
+  'ETH/USD': { name: 'Ethereum / US Dollar', precision: 2, requiredTier: 'PRO' },
+  'XAU/USD': { name: 'Gold / US Dollar', precision: 2, requiredTier: 'VIP' },
+  'USD/JPY': { name: 'US Dollar / Yen', precision: 3, requiredTier: 'BASIC' },
+  'GBP/USD': { name: 'Pound / US Dollar', precision: 5, requiredTier: 'BASIC' },
+};
+
+// Added BROKER_ASSET_MAP as it is imported by components
+export const BROKER_ASSET_MAP: Record<string, string[]> = {
+  'PocketOption': ['EUR/USD', 'USD/JPY', 'GBP/USD'],
+  'Quotex': ['EUR/USD', 'BTC/USD', 'ETH/USD'],
+  'IC Markets': ['EUR/USD', 'XAU/USD', 'GBP/USD'],
+  'Binance': ['BTC/USD', 'ETH/USD']
+};
+
+export const STRATEGIES = [
+  { id: 'BASIC_RSI', name: 'Neural RSI Momentum', description: 'Basic relative strength filtering for trending markets.', winRate: 65, tier: 'BASIC' },
+  { id: 'PRO_SENTINEL', name: 'Sentinel Delta Scanner', description: 'Volume-weighted delta divergence for institutional entries.', winRate: 78, tier: 'PRO' },
+  { id: 'VIP_LIQUIDITY', name: 'Void Finder AI', description: 'SMC fair value gap and liquidity sweep detection.', winRate: 88, tier: 'VIP' },
+  { id: 'HFT_SNIPER', name: 'HFT Sniper Logic', description: 'Ultra-low latency tick analysis for micro-reversals.', winRate: 94, tier: 'VIP' }
+];
+
+export const BINARY_BROKERS = ['PocketOption', 'Quotex', 'Deriv', 'IQ Option'];
+export const INSTITUTIONAL_BROKERS = ['IC Markets', 'Pepperstone', 'FXPro', 'Exness'];
+export const CRYPTO_BROKERS = ['Binance', 'Bybit', 'OKX', 'Coinbase'];
