@@ -165,20 +165,46 @@ export interface BotConfig {
 }
 
 export const PAIR_CONFIGS: Record<string, { name: string, precision: number, requiredTier: UserTier }> = {
+  // Forex Majors (BASIC Tier)
   'EUR/USD': { name: 'Euro / US Dollar', precision: 5, requiredTier: 'BASIC' },
+  'GBP/USD': { name: 'Pound / US Dollar', precision: 5, requiredTier: 'BASIC' },
+  'USD/JPY': { name: 'US Dollar / Yen', precision: 3, requiredTier: 'BASIC' },
+  'USD/CHF': { name: 'US Dollar / Swiss Franc', precision: 5, requiredTier: 'BASIC' },
+  'AUD/USD': { name: 'Australian Dollar / US Dollar', precision: 5, requiredTier: 'BASIC' },
+  'USD/CAD': { name: 'US Dollar / Canadian Dollar', precision: 5, requiredTier: 'BASIC' },
+  'NZD/USD': { name: 'New Zealand Dollar / US Dollar', precision: 5, requiredTier: 'BASIC' },
+
+  // Forex Minors (PRO Tier)
+  'EUR/GBP': { name: 'Euro / British Pound', precision: 5, requiredTier: 'PRO' },
+  'EUR/JPY': { name: 'Euro / Japanese Yen', precision: 3, requiredTier: 'PRO' },
+  'GBP/JPY': { name: 'Pound / Japanese Yen', precision: 3, requiredTier: 'PRO' },
+  'AUD/JPY': { name: 'Australian Dollar / Japanese Yen', precision: 3, requiredTier: 'PRO' },
+  'CAD/JPY': { name: 'Canadian Dollar / Japanese Yen', precision: 3, requiredTier: 'PRO' },
+  'EUR/AUD': { name: 'Euro / Australian Dollar', precision: 5, requiredTier: 'PRO' },
+  'GBP/AUD': { name: 'British Pound / Australian Dollar', precision: 5, requiredTier: 'PRO' },
+  
+  // Crypto (PRO/VIP Tier)
   'BTC/USD': { name: 'Bitcoin / US Dollar', precision: 2, requiredTier: 'PRO' },
   'ETH/USD': { name: 'Ethereum / US Dollar', precision: 2, requiredTier: 'PRO' },
+  'SOL/USD': { name: 'Solana / US Dollar', precision: 2, requiredTier: 'VIP' },
+  'BNB/USD': { name: 'Binance Coin / US Dollar', precision: 2, requiredTier: 'VIP' },
+  'XRP/USD': { name: 'Ripple / US Dollar', precision: 4, requiredTier: 'VIP' },
+  'ADA/USD': { name: 'Cardano / US Dollar', precision: 4, requiredTier: 'VIP' },
+
+  // Metals & Indices (VIP Tier)
   'XAU/USD': { name: 'Gold / US Dollar', precision: 2, requiredTier: 'VIP' },
-  'USD/JPY': { name: 'US Dollar / Yen', precision: 3, requiredTier: 'BASIC' },
-  'GBP/USD': { name: 'Pound / US Dollar', precision: 5, requiredTier: 'BASIC' },
+  'XAG/USD': { name: 'Silver / US Dollar', precision: 2, requiredTier: 'VIP' },
+  'NAS100': { name: 'Nasdaq 100 Index', precision: 2, requiredTier: 'VIP' },
+  'US30': { name: 'Dow Jones 30 Index', precision: 2, requiredTier: 'VIP' },
 };
 
-// Added BROKER_ASSET_MAP as it is imported by components
 export const BROKER_ASSET_MAP: Record<string, string[]> = {
-  'PocketOption': ['EUR/USD', 'USD/JPY', 'GBP/USD'],
-  'Quotex': ['EUR/USD', 'BTC/USD', 'ETH/USD'],
-  'IC Markets': ['EUR/USD', 'XAU/USD', 'GBP/USD'],
-  'Binance': ['BTC/USD', 'ETH/USD']
+  'PocketOption': ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 'AUD/USD', 'EUR/GBP', 'EUR/JPY', 'GBP/JPY'],
+  'Quotex': ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'BTC/USD', 'ETH/USD', 'XAU/USD'],
+  'IC Markets': ['EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF', 'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP', 'EUR/JPY', 'GBP/JPY', 'AUD/JPY', 'CAD/JPY', 'EUR/AUD', 'GBP/AUD', 'XAU/USD', 'XAG/USD', 'NAS100', 'US30'],
+  'Binance': ['BTC/USD', 'ETH/USD', 'SOL/USD', 'BNB/USD', 'XRP/USD', 'ADA/USD'],
+  'Pepperstone': ['EUR/USD', 'GBP/USD', 'USD/JPY', 'XAU/USD', 'NAS100', 'US30'],
+  'Exness': ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'BTC/USD', 'XAU/USD']
 };
 
 export const STRATEGIES = [
