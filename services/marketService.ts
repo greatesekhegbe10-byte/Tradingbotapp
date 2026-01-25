@@ -11,49 +11,17 @@ const priceState: Record<string, number> = {};
 export const getPrice = (pair: string): number => {
   if (!priceState[pair]) {
     const defaults: Record<string, number> = {
-      // Forex Majors
       'EUR/USD': 1.0854,
       'GBP/USD': 1.2741,
       'USD/JPY': 156.42,
-      'USD/CHF': 0.9085,
-      'AUD/USD': 0.6675,
-      'USD/CAD': 1.3650,
-      'NZD/USD': 0.6120,
-      // Forex Minors
-      'EUR/GBP': 0.8520,
-      'EUR/JPY': 169.85,
-      'GBP/JPY': 199.30,
-      'AUD/JPY': 104.45,
-      'CAD/JPY': 114.60,
-      'EUR/AUD': 1.6250,
-      'GBP/AUD': 1.9080,
-      // Crypto
       'BTC/USD': 68420,
       'ETH/USD': 3821,
-      'SOL/USD': 168.45,
-      'BNB/USD': 595.20,
-      'XRP/USD': 0.5240,
-      'ADA/USD': 0.4580,
-      // Metals & Indices
-      'XAU/USD': 2384,
-      'XAG/USD': 30.85,
-      'NAS100': 18850,
-      'US30': 39850,
+      'XAU/USD': 2384
     };
-    priceState[pair] = defaults[pair] || (Math.random() * 100 + 10);
+    priceState[pair] = defaults[pair] || 100;
   }
   
-  let volatility = 0.0001;
-  const pairLower = pair.toLowerCase();
-
-  if (pairLower.includes('btc') || pairLower.includes('eth')) volatility = 5.0;
-  else if (pairLower.includes('sol') || pairLower.includes('bnb')) volatility = 0.8;
-  else if (pairLower.includes('xrp') || pairLower.includes('ada')) volatility = 0.005;
-  else if (pairLower.includes('xau')) volatility = 0.5;
-  else if (pairLower.includes('xag')) volatility = 0.05;
-  else if (pairLower.includes('nas100') || pairLower.includes('us30')) volatility = 2.0;
-  else if (pairLower.includes('jpy')) volatility = 0.02;
-
+  const volatility = pair.includes('BTC') || pair.includes('ETH') ? 5.0 : 0.0001;
   const change = (Math.random() - 0.5) * 2 * volatility;
   priceState[pair] += change;
   return priceState[pair];
@@ -146,6 +114,7 @@ export class SignalEngine {
     if (analysis.confidence < config.minConfidence) {
       return { isBlocked: true, blockReason: 'CONFIDENCE_LOW' };
     }
+    // Execution check is handled in the main component to prevent unauthorized broker calls
     return { isBlocked: false, signal: analysis.recommendation };
   }
 }
