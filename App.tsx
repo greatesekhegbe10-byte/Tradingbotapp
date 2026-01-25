@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutDashboard, History, Sliders, Activity, Target, Shield, UserCircle, ShieldAlert, Zap, Radio, BellRing, X, Power, Calculator, BookOpen, BarChart3, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { LayoutDashboard, History, Sliders, Activity, Target, Shield, UserCircle, ShieldAlert, Zap, Radio, BellRing, X, Power, Calculator, BookOpen, BarChart3, AlertCircle, Globe, Coins, ChevronDown, Search, Check } from 'lucide-react';
 import { StatsCard } from './components/StatsCard';
 import { ChartPanel } from './components/ChartPanel';
 import { BotStatusPanel } from './components/BotStatusPanel';
@@ -13,18 +13,21 @@ import { UpgradeModal } from './components/UpgradeModal';
 import { SignalDashboard } from './components/SignalDashboard';
 import { TradingJournal } from './components/TradingJournal';
 import { RiskCalculator } from './components/RiskCalculator';
-import { UserProfile, Trade, AnalysisResult, BotConfig, MarketDataPoint, StakingPlan } from './types';
+import { CurrencyPairsTab } from './components/CurrencyPairsTab';
+import { UserProfile, Trade, AnalysisResult, BotConfig, MarketDataPoint, StakingPlan, PAIR_CONFIGS } from './types';
 import { getPrice, RiskMonitor, SignalEngine } from './services/marketService';
 import { analyzeMarket } from './services/geminiService';
 import { NEXUS_LOGO } from './assets';
 import { BOT_DEFAULTS } from './appConfig';
 
-type View = 'dashboard' | 'signals' | 'journal' | 'calculator' | 'settings' | 'admin';
+type View = 'dashboard' | 'signals' | 'journal' | 'calculator' | 'settings' | 'admin' | 'pairs';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => localStorage.getItem('nexus_auth') === 'true');
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [alertQueue, setAlertQueue] = useState<{id: string, msg: string}[]>([]);
+  const [isPairDropdownOpen, setIsPairDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
   const [user, setUser] = useState<UserProfile | null>(() => {
     try { 
@@ -64,6 +67,17 @@ const App: React.FC = () => {
     setTimeout(() => setAlertQueue(prev => prev.filter(a => a.id !== id)), 5000);
   };
 
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsPairDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // MAIN TICKER - Risk Monitoring Middleware
   useEffect(() => {
     const ticker = setInterval(() => {
@@ -76,7 +90,6 @@ const App: React.FC = () => {
         volume: Math.random() * 5000 
       }]);
 
-      // Professional Risk Monitoring Hook
       setTrades(prev => prev.map(t => RiskMonitor.evaluateTrade(t, price, config)));
       
     }, 1000);
@@ -137,6 +150,7 @@ const App: React.FC = () => {
           <div key={alert.id} className="bg-surface/90 backdrop-blur-3xl border border-primary/20 p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-fade-in pointer-events-auto">
              <BellRing className="w-4 h-4 text-primary" />
              <p className="text-[10px] font-black text-white uppercase tracking-widest leading-relaxed flex-1">{alert.msg}</p>
+             {/* Fixed: Use alert.id instead of id which was not in scope */}
              <button onClick={() => setAlertQueue(prev => prev.filter(a => a.id !== alert.id))}><X className="w-4 h-4 text-gray-500" /></button>
           </div>
         ))}
@@ -150,6 +164,9 @@ const App: React.FC = () => {
         <nav className="flex-1 space-y-2">
           <button onClick={() => setActiveView('dashboard')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'dashboard' ? 'bg-primary text-white' : 'text-gray-500 hover:text-white'}`}>
             <LayoutDashboard className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-widest">Dashboard</span>
+          </button>
+          <button onClick={() => setActiveView('pairs')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'pairs' ? 'bg-primary text-white' : 'text-gray-500 hover:text-white'}`}>
+            <Coins className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-widest">Instruments</span>
           </button>
           <button onClick={() => setActiveView('signals')} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeView === 'signals' ? 'bg-primary text-white' : 'text-gray-500 hover:text-white'}`}>
             <Radio className="w-5 h-5" /> <span className="text-[10px] font-black uppercase tracking-widest">Signals</span>
@@ -173,12 +190,45 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden">
          <header className="h-24 border-b border-gray-800 flex items-center justify-between px-10 bg-[#0a101f]/80 backdrop-blur-3xl z-40">
             <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3 bg-gray-900/50 p-2.5 rounded-3xl border border-gray-800 pr-6">
-                    <UserCircle className="w-8 h-8 text-primary ml-2" />
-                    <div>
-                      <p className="text-[11px] font-black text-white uppercase tracking-tight">{user?.name}</p>
-                      <p className="text-[8px] text-primary font-black uppercase tracking-widest">{user?.tier} NODE</p>
+                <div className="relative" ref={dropdownRef}>
+                  <button 
+                    onClick={() => setIsPairDropdownOpen(!isPairDropdownOpen)}
+                    className="flex items-center gap-3 bg-gray-900/50 p-2.5 rounded-2xl border border-gray-800 pr-4 hover:bg-gray-800 transition-all"
+                  >
+                      <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center border border-primary/30">
+                        <Zap className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-[11px] font-black text-white uppercase tracking-tight">{config.pair}</p>
+                        <p className="text-[8px] text-primary font-black uppercase tracking-widest">Switch Pair</p>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${isPairDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isPairDropdownOpen && (
+                    <div className="absolute top-full mt-3 left-0 w-64 bg-[#0a101f] border border-gray-800 rounded-3xl shadow-2xl z-50 p-4 animate-fade-in">
+                       <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-600" />
+                          <input type="text" placeholder="Search Pairs..." className="w-full bg-gray-900 border border-gray-800 rounded-xl py-2 pl-9 pr-4 text-[10px] text-white outline-none" />
+                       </div>
+                       <div className="max-h-60 overflow-y-auto space-y-1 pr-1 scrollbar-hide">
+                          {Object.keys(PAIR_CONFIGS).map(p => (
+                            <button 
+                              key={p}
+                              onClick={() => {
+                                setConfig(prev => ({ ...prev, pair: p }));
+                                setIsPairDropdownOpen(false);
+                                pushAlert(`INSTRUMENT LOADED: ${p}`);
+                              }}
+                              className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${config.pair === p ? 'bg-primary/10 text-primary border border-primary/20' : 'text-gray-500 hover:bg-gray-800 hover:text-white'}`}
+                            >
+                               <span className="text-[10px] font-black uppercase tracking-widest">{p}</span>
+                               {config.pair === p && <Check className="w-3 h-3" />}
+                            </button>
+                          ))}
+                       </div>
                     </div>
+                  )}
                 </div>
             </div>
             <button onClick={() => setIsUpgradeModalOpen(true)} className="px-6 py-3 bg-primary text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary/20">Upgrade Plan</button>
@@ -208,6 +258,17 @@ const App: React.FC = () => {
                     />
                  </div>
               </div>
+            )}
+            {activeView === 'pairs' && user && (
+              <CurrencyPairsTab 
+                currentPair={config.pair} 
+                userTier={user.tier} 
+                onSelectPair={(p) => {
+                  setConfig(prev => ({ ...prev, pair: p }));
+                  setActiveView('dashboard');
+                  pushAlert(`INSTRUMENT ACTIVATED: ${p}`);
+                }} 
+              />
             )}
             {activeView === 'signals' && <SignalDashboard pair={config.pair} />}
             {activeView === 'journal' && <TradingJournal user={user} />}
